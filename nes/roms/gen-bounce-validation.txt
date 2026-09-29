@@ -1,0 +1,4 @@
+gen-bounce.nes validation evidence
+passed=true
+INFO SPRITE_OVERFLOW: sprite overflow not statically decidable (DMA or dynamic Y positions); runtime flicker still possible
+INFO BOOT: boot: 300001 cycles, 9 NMI frames, ppuctrl=$80

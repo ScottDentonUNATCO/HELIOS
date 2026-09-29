@@ -1,0 +1,18 @@
+# OMNI NES generation attempt log
+spec_title: DPAD MOVE
+spec_genre: arcade
+spec_mechanics: move,dpad,sprite
+generator: omni.nes.gen.MockGenerator
+repairer: RuleBasedRepair
+config: maxAttempts=5 enableRepair=true validator=ValidatorConfig(strictIllegalOpcodes=true, requireNmi=true, checkSpriteOverflow=true, checkPaletteTiming=true, bootCycleBudget=300000, nmiFrameCycles=29780)
+---
+attempt: 1
+asm_sha256: 6207c0cc0b8fc6ce36a858f2f87b36e82339cde2c49be6f86b5760fef78a2f7f
+assembled: true
+build_error: none
+passed: true
+fired_rules: none
+repair_action: initial generation
+---
+result: SUCCESS after 1 attempt(s)
+note: none
