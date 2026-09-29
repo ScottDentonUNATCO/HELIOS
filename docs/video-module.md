@@ -76,3 +76,66 @@ machine or a rented endpoint.
 2. ffmpeg-kit-next bundled in-app — on-device editing/export now.
 3. llmedge behind the experimental gate — on-device generation, honestly labeled.
 4. MobileI2V port — only if offline generation becomes the priority.
+
+## Offline sources — the whole map (links)
+
+Same treatment as video: one socket per tool, license accepted at load
+time. Licenses below verified against the GitHub API 2026-09-29 unless
+noted. **Code license ≠ weights license** — model weights often carry
+their own, sometimes non-commercial, terms; the socket must name both.
+
+### Music-making (offline)
+
+- **magenta/magenta** — https://github.com/magenta/magenta — Apache-2.0.
+  Google's music/image ML toolkit; generation models run offline.
+- **facebookresearch/audiocraft** — https://github.com/facebookresearch/audiocraft —
+  code MIT, but **MusicGen weights are CC-BY-NC 4.0 (non-commercial)** —
+  the socket must surface the weights license separately.
+- **stability-ai/stable-audio-tools** — https://github.com/stability-ai/stable-audio-tools —
+  code MIT; **Stable Audio Open weights under the Stability AI Community
+  License (non-commercial)**.
+- **riffusion/riffusion-hobby** — https://github.com/riffusion/riffusion-hobby —
+  MIT. Spectrogram-diffusion text-to-music; small enough to run offline.
+
+### Game-making (offline)
+
+- The NES toolkit already lives in this repo (`nes/`).
+- **chrismaltby/gb-studio** — https://github.com/chrismaltby/gb-studio — MIT.
+  Desktop Game Boy studio; socket candidate (driven as a tool, or its
+  engine design referenced), not Android-native.
+
+### Offline LLM runtimes (Android — the brains behind offline sockets)
+
+- **ggml-org/llama.cpp** — https://github.com/ggml-org/llama.cpp — MIT.
+  The standard offline LLM runtime; server + Android via JNI.
+- **google-ai-edge/mediapipe** — https://github.com/google-ai-edge/mediapipe —
+  Apache-2.0. LLM Inference API runs Gemini-class small models on-device.
+- **google-ai-edge/LiteRT** — https://github.com/google-ai-edge/LiteRT —
+  Apache-2.0. Formerly TFLite; on-device inference runtime.
+- **alibaba/MNN** — https://github.com/alibaba/MNN — Apache-2.0.
+  Lightweight mobile inference; the planned MobileI2V port target.
+- **microsoft/onnxruntime** — https://github.com/microsoft/onnxruntime — MIT.
+  ONNX Runtime Mobile for the DIY port path.
+- **pytorch/executorch** — https://github.com/pytorch/executorch —
+  license file present, SPDX unclassified (BSD-style; verify at install).
+
+## FetchLink — the "paste a link, get a socket" tool
+
+Users shouldn't need to know what a socket is. They paste a link; Helios
+does the rest:
+
+1. **Identify** — GitHub repo? HuggingFace model? Direct file? Docs page?
+2. **Show before fetching** — what it is, its license (code AND weights),
+   download size, what it needs (GPU? 8 GB RAM?). Nothing downloads yet.
+3. **User confirms** — one tap. Big downloads warn on mobile data.
+4. **Fetch** — resumable download with progress, checksum verified when
+   the publisher provides one.
+5. **Register** — becomes a socket/tool in the catalog with its license
+   recorded, ready to use.
+
+Safety rules: only fetches links the user (or their agent, on their
+behalf) explicitly supplies — never auto-follows links from pages;
+no credentialed/private URLs; license is shown and accepted before
+anything runs. This is the user-facing half of agent-driven tool
+acquisition: the catalog holds what we know, FetchLink handles
+everything else.
