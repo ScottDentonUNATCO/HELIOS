@@ -1,0 +1,18 @@
+# OMNI NES generation attempt log
+spec_title: SCORE RALLY
+spec_genre: arcade
+spec_mechanics: score,counter,move
+generator: omni.nes.gen.MockGenerator
+repairer: RuleBasedRepair
+config: maxAttempts=5 enableRepair=true validator=ValidatorConfig(strictIllegalOpcodes=true, requireNmi=true, checkSpriteOverflow=true, checkPaletteTiming=true, bootCycleBudget=300000, nmiFrameCycles=29780)
+---
+attempt: 1
+asm_sha256: 85a3c82a3495a6b9bd2e8e0a66bafb1e567681956f3235a8b4ef20e70fac6311
+assembled: true
+build_error: none
+passed: true
+fired_rules: none
+repair_action: initial generation
+---
+result: SUCCESS after 1 attempt(s)
+note: none

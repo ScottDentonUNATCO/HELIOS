@@ -1,0 +1,26 @@
+# OMNI NES generation attempt log
+spec_title: SLOP ILLEGAL
+spec_genre: arcade
+spec_mechanics: move
+generator: omni.nes.gen.SlopGenerator
+repairer: CompositeRepair(RuleBasedRepair,RepromptRepair)
+config: maxAttempts=5 enableRepair=true validator=ValidatorConfig(strictIllegalOpcodes=true, requireNmi=true, checkSpriteOverflow=true, checkPaletteTiming=true, bootCycleBudget=300000, nmiFrameCycles=29780)
+---
+attempt: 1
+asm_sha256: cce6486abb10689df2d533028e26e10244ee60241cc04a1428ff79a71111fea6
+assembled: true
+build_error: none
+passed: false
+fired_rules: BOOT_ILLEGAL_OPCODE,ILLEGAL_OPCODE,NMI_ENABLED
+repair_action: initial generation
+---
+attempt: 2
+asm_sha256: 70e96d933a9a5912b020c8383f69ec30b45bc08807f84e609448a39da8cdd2d4
+assembled: true
+build_error: none
+passed: true
+fired_rules: none
+repair_action: [RepromptRepair] re-prompted generator with failure context (BOOT_ILLEGAL_OPCODE,ILLEGAL_OPCODE,NMI_ENABLED)
+---
+result: SUCCESS after 2 attempt(s)
+note: none
