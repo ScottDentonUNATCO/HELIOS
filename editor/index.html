@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OMNI · NES CHR Tile / Sprite Editor</title>
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">▚</span>
+    <h1>OMNI <span class="dim">/ NES CHR Editor</span></h1>
+  </div>
+  <div class="top-actions">
+    <button id="btn-help" class="btn small" title="Show help">?</button>
+    <span id="status" class="status">ready</span>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ============ LEFT: tile editor ============ -->
+  <section class="panel editor-panel">
+    <div class="panel-head">
+      <h2>Tile <span id="tile-num" class="mono">#000</span></h2>
+      <span class="hint">offset <span id="tile-off" class="mono">$0000</span></span>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="editor" width="256" height="256"></canvas>
+    </div>
+    <div class="tools">
+      <div class="tool-row">
+        <button id="btn-mirror-h" class="btn" title="Mirror horizontally (H)">⇋ Mirror H</button>
+        <button id="btn-mirror-v" class="btn" title="Mirror vertically (V)">⇅ Mirror V</button>
+        <button id="btn-flip" class="btn" title="Rotate 180° (F)">⟲ Flip 180</button>
+      </div>
+      <div class="tool-row">
+        <button id="btn-shift-l" class="btn" title="Shift left (←)">←</button>
+        <button id="btn-shift-r" class="btn" title="Shift right (→)">→</button>
+        <button id="btn-shift-u" class="btn" title="Shift up (↑)">↑</button>
+        <button id="btn-shift-d" class="btn" title="Shift down (↓)">↓</button>
+        <button id="btn-clear" class="btn danger" title="Clear tile (Del)">Clear</button>
+        <button id="btn-fill" class="btn" title="Fill with current color">Fill</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MIDDLE: palette + picker ============ -->
+  <section class="panel palette-panel">
+    <div class="panel-head">
+      <h2>Palette</h2>
+      <div class="seg">
+        <button id="palset-bg" class="seg-btn active">BG</button>
+        <button id="palset-spr" class="seg-btn">SPR</button>
+      </div>
+    </div>
+    <div class="subpals" id="subpals"></div>
+    <div class="slots" id="slots"></div>
+    <div class="master-grid" id="master-grid"></div>
+    <div class="panel-head sub"><h2>Tile bank · 256</h2><span class="hint">click to select</span></div>
+    <div class="canvas-wrap picker-wrap">
+      <canvas id="picker" width="256" height="256"></canvas>
+    </div>
+  </section>
+
+  <!-- ============ RIGHT: preview + export ============ -->
+  <section class="panel preview-panel">
+    <div class="panel-head"><h2>Preview</h2></div>
+    <div class="prev-row">
+      <div class="prev-box"><label>1×</label><canvas id="prev1" width="8" height="8"></canvas></div>
+      <div class="prev-box"><label>2×</label><canvas id="prev2" width="16" height="16"></canvas></div>
+      <div class="prev-box"><label>4×</label><canvas id="prev4" width="32" height="32"></canvas></div>
+    </div>
+    <div class="flip-toggles">
+      <label><input type="checkbox" id="flip-h"> flip H</label>
+      <label><input type="checkbox" id="flip-v"> flip V</label>
+    </div>
+    <div class="strip-box">
+      <label>sprite strip · tiles <span id="strip-range" class="mono">0–7</span></label>
+      <canvas id="strip" width="128" height="16"></canvas>
+    </div>
+    <div class="panel-head sub"><h2>Export / Import</h2></div>
+    <div class="export-btns">
+      <button id="btn-exp-chr" class="btn primary">↓ .chr (4 KB)</button>
+      <button id="btn-exp-inc" class="btn">↓ .chr.inc</button>
+      <button id="btn-exp-json" class="btn">↓ JSON</button>
+      <button id="btn-imp-json" class="btn">↑ Import JSON</button>
+      <input type="file" id="file-json" accept=".json,application/json" hidden>
+    </div>
+  </section>
+</main>
+
+<footer class="helpbar" id="helpbar">
+  <span><b>1–4</b> color</span>
+  <span><b>←↑↓→</b> shift pixels</span>
+  <span><b>H</b>/<b>V</b> mirror</span>
+  <span><b>F</b> flip 180°</span>
+  <span><b>Del</b> clear</span>
+  <span><b>left-drag</b> paint</span>
+  <span><b>right-drag</b> erase→0</span>
+  <span><b>[</b> / <b>]</b> prev / next tile</span>
+</footer>
+
+<div class="help-overlay" id="help-overlay" hidden>
+  <div class="help-card">
+    <h3>NES CHR Editor — help</h3>
+    <ul>
+      <li>Paint on the 8×8 grid with the left mouse button. Right-click (or right-drag) erases back to color 0.</li>
+      <li>Pick a paint color: click one of the 4 slots (keys <b>1–4</b>), then click any swatch in the 64-color NES master palette to assign it.</li>
+      <li>Sub-palettes: choose one of the 4 slots of the BG or SPR set; the sprite preview always uses the current sub-palette.</li>
+      <li>CHR format: 256 tiles × 16 bytes = 4096 bytes. Each tile is 8 bytes of bit-plane 0 followed by 8 bytes of bit-plane 1, bit 7 = leftmost pixel.</li>
+      <li>Export <b>.chr.inc</b> with the <b>↓ .chr.inc</b> button — it emits <span class="mono">.byte</span> lines in this project's assembler syntax.</li>
+    </ul>
+    <button id="btn-help-close" class="btn primary">Close</button>
+  </div>
+</div>
+
+<script src="editor.js"></script>
+</body>
+</html>
