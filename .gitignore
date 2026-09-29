@@ -1,0 +1,29 @@
+# Build outputs — never commit these
+*.apk
+*.dex
+*.jar
+*.class
+*.flat
+out/
+gen-r/
+gen-r-lib/
+flats/
+extract/
+
+# Toolchain — fetch with scripts/fetch-toolchain.sh, don't commit
+toolchain/
+manual-build/
+
+# Decoded artifacts (regenerate from .b64 / make_icon.py)
+nes/roms/*.nes
+apk-build/res/
+
+# Scratch
+v7-work/
+editor/evidence/
+*.log
+
+# OS / editor noise
+.DS_Store
+.idea/
+*.iml
