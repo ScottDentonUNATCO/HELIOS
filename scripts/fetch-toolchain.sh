@@ -21,6 +21,10 @@ if [ ! -d jdk-17 ]; then
   rm jdk17.tar.gz
 else echo "    already present"; fi
 
+# sdkmanager needs a JVM now, not just at the end.
+export JAVA_HOME="$TC/jdk-17"
+export PATH="$JAVA_HOME/bin:$PATH"
+
 echo "==> Android SDK cmdline-tools"
 if [ ! -d android-sdk/cmdline-tools/latest ]; then
   curl -sSL -o cmdtools.zip "$CMDLINE_TOOLS_URL"
@@ -35,8 +39,16 @@ export ANDROID_HOME="$TC/android-sdk"
 export ANDROID_SDK_ROOT="$TC/android-sdk"
 
 echo "==> SDK packages: build-tools 36.0.0, android-36"
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-  "build-tools;36.0.0" "platforms;android-36" "platform-tools"
+if [ -x "$ANDROID_HOME/build-tools/36.0.0/aapt2" ] && [ -d "$ANDROID_HOME/platforms/android-36" ]; then
+  echo "    already present, skipping sdkmanager"
+else
+  # NOTE: sdkmanager's HTTP stack cannot tunnel through authenticating
+  # proxies. If this fails in your environment, install the packages with
+  # Android Studio (or another machine) and copy build-tools/36.0.0,
+  # platforms/android-36, platform-tools and licenses/ into ./toolchain/android-sdk/.
+  "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+    "build-tools;36.0.0" "platforms;android-36" "platform-tools"
+fi
 
 echo "==> Kotlin compiler $KOTLIN_VERSION"
 if [ ! -x "$TC/kotlinc/bin/kotlinc" ]; then
