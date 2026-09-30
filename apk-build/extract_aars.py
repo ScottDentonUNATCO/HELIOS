@@ -126,6 +126,17 @@ def main():
             rows.append((lib_pkg, cj, res, man, libs))
             log(f"extracted {g}:{a}:{v} -> {name}  pkg={lib_pkg} res={'yes' if res else 'no'}")
 
+    # v8 ground truth: the working v8 APK's manifest contains the
+    # InitializationProvider with ZERO Initializer meta-data entries.
+    # The app never uses EmojiCompat / ProcessLifecycleOwner / ProfileInstaller,
+    # and running EmojiCompatInitializer crashes the app before MainActivity
+    # (v9/v10 both died at startup from this). Strip them all.
+    for provider in app_pkg_el.findall("provider"):
+        for md in list(provider.findall("meta-data")):
+            if md.get(f"{{{ANDROID_NS}}}value") == "androidx.startup":
+                log(f"  - removing startup Initializer {md.get(f'{{{ANDROID_NS}}}name')} (matches v8)")
+                provider.remove(md)
+
     app_root.set("package", args.package)
     merged = os.path.join(out, "merged-AndroidManifest.xml")
     ET.ElementTree(app_root).write(merged, encoding="utf-8", xml_declaration=True)

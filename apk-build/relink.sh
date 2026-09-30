@@ -22,6 +22,13 @@ export PATH="$JAVA_HOME/bin:$BT:$PATH"
 
 MANIFEST="$AB/extract/merged-AndroidManifest.xml"
 [ -f "$MANIFEST" ] || { echo "FATAL: missing $MANIFEST (run scripts/fetch-deps.sh)"; exit 1; }
+# Gradle's manifest merger substitutes ${applicationId} with the real package;
+# our no-Gradle pipeline must do it explicitly or the APK ships literal
+# "${applicationId}" in provider authorities / permission names (v8 had these
+# resolved to com.omni.app).
+MANIFEST_FINAL="$AB/manifest-final.xml"
+sed 's/\${applicationId}/com.omni.app/g' "$MANIFEST" > "$MANIFEST_FINAL"
+MANIFEST="$MANIFEST_FINAL"
 grep -q "Helios" "$MANIFEST" || echo "WARN: manifest label is not Helios"
 
 FLATS="$AB/flats"
@@ -55,7 +62,7 @@ aapt2 link -o "$AB/omni-unsigned.apk" \
   -I "$AJAR" \
   --manifest "$MANIFEST" \
   --min-sdk-version 28 --target-sdk-version 36 \
-  --version-code 9 --version-name "0.8.1-helios" \
+  --version-code 10 --version-name "0.8.2-helios" \
   -A "$ASSETS" \
   --java "$AB/gen-r" \
   "$FLATS"/*/*.flat
