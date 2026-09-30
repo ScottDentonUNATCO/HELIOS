@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#061315" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="screen-orientation" content="sensor" />
+  <link rel="manifest" href="assets/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <title>CHINASKAR</title>
+  <style>
+      :root {
+      color-scheme: light dark;
+      --page:#e9edf0; --ink:#101316; --panel:#fff; --line:#101316;
+      --cyan:#00c9d8; --yellow:#ffe14a; --red:#f4473c; --muted:#59636b;
+      --shadow:#101316;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --page:#080b0d; --ink:#f7f3df; --panel:#151a1d; --line:#f7f3df; --muted:#aab5ba; --shadow:#000; }
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; min-height:100%; overflow:hidden; background:var(--page); color:var(--ink); }
+    body { font-family:"Roboto Mono", ui-monospace, monospace; overscroll-behavior:none; touch-action:none; }
+    button { font:inherit; color:inherit; }
+    .game { position:relative; width:100vw; height:100dvh; min-height:460px; overflow:hidden; background:#061315; }
+    canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
+    .game.mode-n64 canvas, .game.mode-ascii canvas { image-rendering:auto; }
+    .game.mode-ascii { background:#000; }
+    .game.mode-ascii .scanlines { display:block; opacity:.22; mix-blend-mode:screen; background:repeating-linear-gradient(0deg,transparent 0 4px,rgba(0,255,190,.14) 4px 5px); }
+    .game.build-view canvas { image-rendering:pixelated; }
+    .game.crt-off .scanlines { display:none !important; }
+    .game.mode-ascii .satTelemetry { color:#63ffd5; background:#000d; border-color:#25ffb7; text-shadow:0 0 7px currentColor; }
+    .scanlines { position:absolute; inset:0; pointer-events:none; opacity:.16; background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.3) 3px 4px); mix-blend-mode:multiply; }
+    .game.mode-snes .scanlines { opacity:.08; }
+    .game.mode-n64 .scanlines { display:none; }
+    .game.mode-ps1 .scanlines { opacity:.1; background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,0,0,.35) 2px 3px); }
+    .satTelemetry { display:block; position:absolute; z-index:2; inset:12px 12px auto auto; color:#e6f5db; background:#07110dbf; border:1px solid #93b48e; padding:6px 8px; font:700 9px/1.45 "Roboto Mono",monospace; letter-spacing:.08em; pointer-events:none; }
+    .satTelemetry span { color:#f5d86f; }
+    .hud { position:absolute; inset:0; pointer-events:none; padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); display:grid; grid-template-columns:1fr auto 1fr; align-items:start; gap:10px; }
+    .hud[hidden] { display:none; }
+    .meter { background:#06090ce8; border:3px solid #f7f3df; box-shadow:4px 4px 0 #000; color:#fffbdc; padding:8px 10px; min-width:126px; }
+    .meter.right { justify-self:end; text-align:right; }
+    .label { font:8px/1.4 "Press Start 2P",monospace; color:#76eff2; margin-bottom:5px; }
+    .value { font:700 20px/1 "Roboto Mono",monospace; letter-spacing:-1px; }
+    .sub { font:700 10px/1.3 "Roboto Mono",monospace; color:#c8d0d2; margin-top:4px; }
+    .centerHud { justify-self:center; text-align:center; }
+    .flag { display:inline-block; background:#ffe34d; color:#141414; border:3px solid #141414; box-shadow:3px 3px 0 #000; padding:7px 9px; font:8px/1.4 "Press Start 2P",monospace; }
+    /* NASCAR flag stand: the HUD flag indicator always shows the live flag state. */
+    .flag-green { background:#22c55e; color:#06130a; border-color:#06130a; }
+    .flag-yellow { background:#ffe34d; color:#141414; }
+    .flag-white { background:#f2f2f2; color:#141414; }
+    .flag-checkered { background:repeating-conic-gradient(#151515 0% 25%,#f5f5f5 0% 50%) 0 0/16px 16px; color:#fff; text-shadow:2px 2px 0 #000; }
+    .flag-pace { background:#7d838d; color:#0e1114; }
+    .pause { pointer-events:auto; display:block; margin:8px auto 0; border:2px solid #f7f3df; background:#111b1e; color:#fff; padding:7px 9px; font:8px "Press Start 2P",monospace; cursor:pointer; box-shadow:2px 2px 0 #000; }
+    .pause:active { transform:translate(2px,2px); box-shadow:none; }
+    .modeSwitch { pointer-events:auto; display:block; margin:7px auto 0; border:2px solid #101316; background:#ffe047; color:#101316; padding:7px 8px; font:7px "Press Start 2P",monospace; cursor:pointer; box-shadow:2px 2px 0 #000; white-space:nowrap; }
+    .modeSwitch.tow { background:#f4473c; color:#fff; border-color:#fff; }
+    .viewSwitch { pointer-events:auto; display:inline-block; margin:7px 2px 0; border:2px solid #f7f3df; background:#111b1e; color:#fff; padding:6px 7px; font:7px "Press Start 2P",monospace; cursor:pointer; box-shadow:2px 2px 0 #000; white-space:nowrap; }
+    .shopSwitch { pointer-events:auto; display:inline-block; margin:7px 2px 0; border:2px solid #101316; background:#ff3d93; color:#101316; padding:6px 7px; font:7px "Press Start 2P",monospace; cursor:pointer; box-shadow:2px 2px 0 #000; white-space:nowrap; }
+    .cameraReadout { display:block; margin-top:5px; color:#c8d0d2; font:700 8px/1.3 "Roboto Mono",monospace; }
+    .pitStatus { display:block; margin-top:5px; color:#ffe047; font:700 8px/1.3 "Roboto Mono",monospace; min-height:10px; }
+    .pitSwitch { pointer-events:auto; display:inline-block; margin:7px 2px 0; border:2px solid #101316; background:#72f08f; color:#07130b; padding:6px 7px; font:7px "Press Start 2P",monospace; cursor:pointer; box-shadow:2px 2px 0 #000; white-space:nowrap; }
+    .pitSwitch.requested { background:#ffe047; animation:pitPulse .65s steps(2,end) infinite; }
+    @keyframes pitPulse { 50% { filter:brightness(1.35); } }
+    .shopCard { width:min(520px,100%); text-align:left; }
+    .optOpenBtn { margin-top:10px; background:var(--panel); color:var(--ink); }
+    .optCard { max-height:94vh; display:flex; flex-direction:column; }
+    .optList { overflow-y:auto; overscroll-behavior:contain; margin:12px 0; display:flex; flex-direction:column; gap:8px; padding:2px; }
+    .optRow { display:flex; align-items:center; gap:12px; width:100%; min-height:58px; padding:10px 12px; border:3px solid var(--line); background:transparent; cursor:pointer; box-shadow:3px 3px 0 var(--shadow); text-align:left; color:var(--ink); }
+    .optRow .optName { font:10px/1.4 "Press Start 2P",monospace; flex:1; }
+    .optRow .optDesc { display:block; margin-top:5px; font-family:"Roboto Mono",monospace; font-size:10px; line-height:1.4; color:var(--muted); font-weight:400; }
+    .optState { flex:0 0 auto; min-width:64px; text-align:center; font:10px/1 "Press Start 2P",monospace; padding:10px 8px; border:3px solid var(--line); }
+    .optRow[aria-pressed="true"] .optState { background:var(--yellow); color:#101316; border-color:#101316; }
+    .optRow[aria-pressed="false"] .optState { background:#3a3f42; color:#c9d3d0; }
+    .labCard { width:min(660px,100%); max-height:94vh; display:flex; flex-direction:column; text-align:left; }
+    .labIntro { margin:0 0 12px; color:var(--muted); font-size:11px; line-height:1.5; }
+    .labList { overflow-y:auto; overscroll-behavior:contain; display:grid; gap:10px; padding:2px 4px 4px 2px; }
+    .labRow { display:grid; grid-template-columns:minmax(150px,1fr) minmax(170px,1.25fr) 68px; align-items:center; gap:10px; border-bottom:2px solid color-mix(in srgb,var(--line) 28%,transparent); padding:8px 0 11px; }
+    .labName { font:8px/1.45 "Press Start 2P",monospace; }
+    .labRange { width:100%; accent-color:var(--cyan); touch-action:pan-x; }
+    .labValue { text-align:right; font:700 12px/1 "Roboto Mono",monospace; color:var(--cyan); font-variant-numeric:tabular-nums; }
+    .labActions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+    .labActions .start { padding:12px 8px; font-size:9px; }
+    .labExport { width:100%; min-height:58px; resize:none; margin-top:10px; border:3px solid var(--line); background:#071013; color:#9fffe5; padding:9px; font:10px/1.45 "Roboto Mono",monospace; }
+    .labStatus { min-height:18px; margin:7px 0 0; color:var(--muted); font-size:10px; line-height:1.4; }
+    .diagnostics { position:absolute; z-index:4; left:max(10px,env(safe-area-inset-left)); bottom:max(10px,env(safe-area-inset-bottom)); width:174px; padding:7px 8px; background:#05090bea; color:#d8fff5; border:2px solid #56d9c1; box-shadow:3px 3px 0 #000; pointer-events:none; font:700 9px/1.45 "Roboto Mono",monospace; }
+    .diagnostics[hidden] { display:none !important; }
+    .diagnosticsGrid { display:grid; grid-template-columns:1fr auto; gap:1px 8px; }
+    .diagnosticsGrid span:nth-child(even) { color:#ffe047; text-align:right; font-variant-numeric:tabular-nums; }
+    .diagnostics canvas { width:100%; height:28px; margin-top:5px; border-top:1px solid #244943; image-rendering:auto; }
+    .opt-noshop #shopBtn { display:none !important; }
+    @media (max-width:600px) {
+      .labRow { grid-template-columns:1fr 58px; gap:7px; }
+      .labRange { grid-column:1 / -1; grid-row:2; }
+      .diagnostics { left:auto; right:max(8px,env(safe-area-inset-right)); bottom:calc(max(8px,env(safe-area-inset-bottom)) + 214px); width:158px; font-size:8px; }
+    }
+    .opt-nopit #pitBtn { display:none !important; }
+    .shopGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:14px 0; }
+    .shopItem { border:3px solid var(--line); background:transparent; padding:12px 7px; cursor:pointer; box-shadow:3px 3px 0 var(--shadow); text-align:center; }
+    .shopItem strong { display:block; font:9px/1.35 "Press Start 2P",monospace; }
+    .shopItem small { display:block; margin-top:6px; font-size:9px; color:var(--muted); }
+    .shopItem.selected { background:var(--yellow); color:#101316; border-color:#101316; }
+    .shopItem.selected small { color:#333; }
+    .shopNote { font-size:11px; line-height:1.55; color:var(--muted); }
+    .shopStatus { background:#101316; color:#fffbdc; padding:9px 10px; font:9px/1.5 "Press Start 2P",monospace; }
+    #paintShop { z-index:7; }
+    .game.mode-n64 .viewSwitch { border-color:#9ebd98; background:#15221a; color:#d9f3d2; box-shadow:2px 2px 0 #050a06; }
+    .slipWrap { height:6px; width:100%; background:#394044; margin-top:7px; }
+    .slip { height:100%; width:0; background:#f4473c; transition:width .08s linear; }
+    .slipCue { position:absolute; inset:0; z-index:2; pointer-events:none; opacity:0; box-shadow:inset 0 0 34px rgba(244,71,60,.72); transition:opacity .06s linear; }
+    .overlay { position:absolute; inset:0; z-index:5; display:grid; place-items:start center; overflow-y:auto; padding:18px; background:rgba(2,7,8,.72); backdrop-filter:blur(2px); }
+    .overlay.hidden { display:none; }
+    .card { width:min(560px,100%); margin:auto 0; background:var(--panel); color:var(--ink); border:4px solid var(--line); box-shadow:9px 9px 0 var(--shadow); padding:clamp(18px,4vw,34px); text-align:center; }
+    .stripe { height:9px; margin:-4px -4px 22px; background:repeating-linear-gradient(90deg,var(--cyan) 0 48px,var(--yellow) 48px 96px,var(--red) 96px 144px); }
+    h1 { font:clamp(25px,7vw,46px)/1.12 "Press Start 2P",monospace; margin:0 0 12px; letter-spacing:-2px; text-shadow:4px 4px 0 var(--cyan); }
+    .tag { margin:0 auto 24px; max-width:410px; color:var(--muted); font-size:13px; line-height:1.5; }
+    .choiceTitle { font:9px/1.3 "Press Start 2P",monospace; margin-bottom:10px; }
+    .choices { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
+    .choice { border:3px solid var(--line); background:transparent; padding:13px 8px; cursor:pointer; box-shadow:3px 3px 0 var(--shadow); }
+    .choice strong { display:block; font:14px/1.2 "Press Start 2P",monospace; }
+    .choice small { display:block; margin-top:6px; color:var(--muted); font-size:10px; }
+    .choice.selected { background:var(--yellow); color:#101316; border-color:#101316; }
+    .choice.selected small { color:#303030; }
+    .graphicsChoices { display:grid; grid-template-columns:repeat(6,1fr); gap:7px; margin:-1px 0 17px; }
+    .gfxChoice { border:3px solid var(--line); background:transparent; padding:9px 5px; cursor:pointer; box-shadow:3px 3px 0 var(--shadow); min-width:0; }
+    .gfxChoice strong { display:block; font:8px/1.25 "Press Start 2P",monospace; }
+    .gfxChoice small { display:block; margin-top:5px; color:var(--muted); font-size:8px; line-height:1.25; }
+    .gfxChoice.selected { background:var(--cyan); color:#071013; border-color:#071013; }
+    .gfxChoice.selected small { color:#173338; }
+    .rideRow { display:flex; align-items:center; justify-content:center; gap:9px; margin:-3px 0 18px; }
+    .rideLabel { font:8px/1.35 "Press Start 2P",monospace; margin-right:4px; }
+    .ride { width:34px; height:26px; border:3px solid var(--line); background:var(--ride); cursor:pointer; box-shadow:3px 3px 0 var(--shadow); position:relative; }
+    .ride::after { content:""; position:absolute; inset:5px 8px; background:#111; opacity:.72; }
+    .ride.selected { outline:3px solid var(--cyan); outline-offset:2px; transform:translateY(-2px); }
+    .start { width:100%; border:3px solid #061315; background:var(--cyan); color:#061315; padding:15px; font:12px "Press Start 2P",monospace; box-shadow:5px 5px 0 #061315; cursor:pointer; }
+    .start:active { transform:translate(3px,3px); box-shadow:2px 2px 0 #061315; }
+    .keys { margin:17px 0 0; font-size:10px; color:var(--muted); line-height:1.55; }
+    .countdown { position:absolute; z-index:4; left:50%; top:48%; transform:translate(-50%,-50%); color:#fffbdc; font:clamp(48px,15vw,108px)/1 "Press Start 2P",monospace; text-shadow:7px 7px 0 #000; pointer-events:none; }
+    .countdown:empty { display:none; }
+    .cameraChip { position:absolute; z-index:4; right:max(12px,env(safe-area-inset-right)); top:max(104px,calc(env(safe-area-inset-top) + 104px)); background:#071013e8; color:#76eff2; border:2px solid #fffbdc; box-shadow:3px 3px 0 #000; padding:6px 8px; font:7px/1.35 "Press Start 2P",monospace; pointer-events:none; }
+    .cameraToast { position:absolute; z-index:9; left:50%; bottom:max(28px,env(safe-area-inset-bottom)); transform:translate(-50%,12px); background:#071013ed; color:#fffbdc; border:3px solid #76eff2; box-shadow:4px 4px 0 #000; padding:9px 13px; font:8px/1.35 "Press Start 2P",monospace; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .14s linear,transform .14s linear; }
+    .cameraToast.show { opacity:1; transform:translate(-50%,0); }
+    .hostCard { position:absolute; z-index:12; left:50%; top:50%; transform:translate(-50%,-58%); width:min(560px,92vw); background:#0b1214f2; color:#fffbdc; border:4px solid #ffb42d; box-shadow:8px 8px 0 #000; padding:18px 20px; font:9px/1.7 "Press Start 2P",monospace; text-align:center; pointer-events:none; }
+    .hostCard.hidden { display:none; }
+    .hostCard .hosts { font-size:13px; margin-bottom:10px; }
+    .hostCard .hostsTitle { color:#ffb42d; font-size:11px; margin-bottom:8px; }
+    .hostCard .hostsQuote { color:#9fdce0; }
+    .hostCard .hostsCta { margin-top:12px; color:#ffe65a; }
+    .hostStrip { margin:14px 0 0; padding:10px 12px; border:3px dashed #ffb42d; font:8px/1.6 "Press Start 2P",monospace; color:#ffd98a; text-align:center; }
+    .hostStrip b { color:#fffbdc; }
+    .touch { display:none; position:absolute; z-index:3; left:0; right:0; bottom:max(10px,env(safe-area-inset-bottom)); padding:0 max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); justify-content:space-between; pointer-events:none; }
+    .cluster { display:flex; gap:10px; align-items:end; }
+    .touch button { pointer-events:auto; width:58px; height:58px; border:3px solid #fffbdc; background:#071013d9; color:#fffbdc; box-shadow:4px 4px 0 #000; font:17px "Press Start 2P",monospace; user-select:none; -webkit-user-select:none; }
+    .touch button.gas { width:72px; height:72px; background:#12b9c4e8; color:#061315; border-color:#061315; }
+    .touch button.brake { background:#e54c42e8; }
+    .touch button.fire { background:#ff3d93e8; color:#101316; border-color:#101316; }
+    .touch button.cam { width:46px; height:46px; font-size:11px; background:#151f22e8; }
+    .touch button.pressed { transform:translate(3px,3px); box-shadow:1px 1px 0 #000; filter:brightness(1.25); }
+    .touch.walkTouch { display:none; align-items:end; }
+    .game.walking #touchControls { display:none !important; }
+    .game.walking .touch.walkTouch { display:flex; }
+    .walkPad { display:grid; grid-template-columns:repeat(3,48px); grid-template-rows:repeat(2,48px); gap:5px; pointer-events:auto; }
+    .walkPad button, .lookPad button { width:48px; height:48px; }
+    .walkPad .forward { grid-column:2; grid-row:1; background:#12b9c4e8; color:#061315; border-color:#061315; }
+    .walkPad .strafeLeft { grid-column:1; grid-row:2; }
+    .walkPad .back { grid-column:2; grid-row:2; background:#e54c42e8; }
+    .walkPad .strafeRight { grid-column:3; grid-row:2; }
+    .lookPad { display:grid; grid-template-columns:repeat(3,42px); grid-template-rows:repeat(2,42px); gap:5px; pointer-events:auto; }
+    .lookPad button { width:42px; height:42px; font-size:12px; background:#151f22e8; }
+    .lookPad .lookUp { grid-column:2; grid-row:1; }
+    .lookPad .lookLeft { grid-column:1; grid-row:2; }
+    .lookPad .lookDown { grid-column:2; grid-row:2; }
+    .lookPad .lookRight { grid-column:3; grid-row:2; }
+    .startFlow { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:-3px 0 15px; }
+    .startFlow .choice { padding:9px 6px; }
+    .startFlow.lapFlow { grid-template-columns:repeat(3,1fr); }
+    .trackFlow { grid-template-columns:1fr 1fr; }
+    .trackFlow .choice strong { font-size:10px; }
+    .result { font:12px/1.7 "Press Start 2P",monospace; margin:14px 0 22px; }
+    .result b { color:var(--red); }
+    .mobileMenuBtn,.mobileSheet,.install { display:none; }
+    .mobileSheet { position:absolute; z-index:8; left:max(10px,env(safe-area-inset-left)); right:max(10px,env(safe-area-inset-right)); bottom:max(10px,env(safe-area-inset-bottom)); background:#071013f5; color:#fffbdc; border:3px solid #fffbdc; box-shadow:6px 6px 0 #000; padding:12px; pointer-events:auto; }
+    .mobileSheet[hidden] { display:none !important; }
+    .mobileSheetHead { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .mobileSheetTitle { font:9px/1.35 "Press Start 2P",monospace; color:#76eff2; }
+    .mobileSheetStatus { font:700 10px/1.35 "Roboto Mono",monospace; color:#c8d0d2; }
+    .mobileGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .mobileGrid button,.mobileSheetClose { min-height:52px; border:2px solid #fffbdc; background:#142024; color:#fffbdc; box-shadow:3px 3px 0 #000; padding:7px 4px; font:7px/1.35 "Press Start 2P",monospace; }
+    .mobileGrid button:active,.mobileSheetClose:active { transform:translate(2px,2px); box-shadow:1px 1px 0 #000; }
+    .mobileGrid .accent { background:#ffe047; color:#101316; border-color:#101316; }
+    .mobileGrid .danger { background:#e54c42; color:#fff; }
+    .mobileSheetClose { width:76px; min-height:42px; }
+    .mobileHint { display:none; }
+    .qualityLabel,.qualityChoices { display:none; }
+    .qualityChoices { grid-template-columns:repeat(3,1fr); gap:8px; margin:-2px 0 16px; }
+    .qualityChoice { min-height:46px; border:3px solid var(--line); background:transparent; color:inherit; box-shadow:3px 3px 0 var(--shadow); padding:8px 4px; font:8px/1.35 "Press Start 2P",monospace; }
+    .qualityChoice.selected { background:var(--cyan); color:#061315; border-color:#061315; }
+    button { -webkit-tap-highlight-color:transparent; }
+    @media (hover:none), (pointer:coarse) {
+      .touch { display:flex; gap:16px; }
+      .hud { padding-bottom:216px; }
+      .touch button { touch-action:none; user-select:none; -webkit-user-select:none; position:relative; }
+      #touchControls .steerCluster button { width:84px; height:96px; }
+      #touchControls .pedalCluster { gap:12px; }
+      #touchControls .pedalCluster .fire { width:76px; height:76px; }
+      #touchControls .pedalCluster .brake { width:88px; height:96px; }
+      #touchControls .pedalCluster .gas { width:96px; height:104px; }
+      #touchControls .lookCluster { gap:10px; }
+      #touchControls .lookCluster .cam { width:64px; height:64px; }
+      #touchControls .lookCluster .cam::after,
+      #walkControls .lookPad button::after { content:""; position:absolute; inset:-12px; }
+      #walkControls .walkPad { grid-template-columns:repeat(2,72px); grid-template-rows:repeat(2,72px); gap:10px; }
+      #walkControls .walkPad button { width:72px; height:72px; }
+      #walkControls .walkPad .forward { grid-column:1; grid-row:1; }
+      #walkControls .walkPad .strafeLeft { grid-column:2; grid-row:1; }
+      #walkControls .walkPad .back { grid-column:1; grid-row:2; }
+      #walkControls .walkPad .strafeRight { grid-column:2; grid-row:2; }
+      #walkControls .lookPad { grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,64px); gap:10px; }
+      #walkControls .lookPad button { width:64px; height:64px; }
+      #walkControls .lookPad .lookUp { grid-column:1; grid-row:1; }
+      #walkControls .lookPad .lookLeft { grid-column:2; grid-row:1; }
+      #walkControls .lookPad .lookDown { grid-column:1; grid-row:2; }
+      #walkControls .lookPad .lookRight { grid-column:2; grid-row:2; }
+      #walkControls .walkActions { gap:12px; }
+      #walkControls .walkActions button { width:72px; height:72px; }
+    }
+    .mobile-mode .mobileMenuBtn { pointer-events:auto; display:block; margin:7px auto 0; min-width:118px; min-height:46px; border:2px solid #101316; background:#ffe047; color:#101316; box-shadow:3px 3px 0 #000; padding:7px 10px; font:8px/1.25 "Press Start 2P",monospace; }
+    .mobile-mode .mobileSheet { display:block; }
+    .mobile-mode .install.ready { display:block; margin:0 0 15px; }
+    .mobile-mode .qualityChoices { display:grid; }
+    .mobile-mode .qualityLabel { display:block; }
+    .mobile-mode .mobileHint { display:block; margin:12px 0 0; font-size:10px; line-height:1.45; color:var(--muted); }
+    .mobile-mode .overlay { overflow-y:auto; overscroll-behavior:contain; place-items:start center; }
+    .mobile-mode .overlay .card { margin:auto 0; }
+    .mobile-mode .centerHud .pause,.mobile-mode .centerHud .modeSwitch,.mobile-mode .centerHud .viewSwitch,.mobile-mode .centerHud .shopSwitch,.mobile-mode .centerHud .pitSwitch,.mobile-mode .centerHud .cameraReadout { display:none; }
+    .mobile-mode .touch { bottom:max(8px,env(safe-area-inset-bottom)); gap:16px; }
+    .mobile-mode .touch button { touch-action:none; user-select:none; -webkit-user-select:none; position:relative; }
+    .mobile-mode #touchControls .steerCluster { gap:12px; }
+    .mobile-mode #touchControls .steerCluster button { width:84px; min-width:84px; height:96px; min-height:96px; }
+    .mobile-mode #touchControls .pedalCluster { gap:12px; }
+    .mobile-mode #touchControls .pedalCluster .fire { width:76px; min-width:76px; height:76px; min-height:76px; }
+    .mobile-mode #touchControls .pedalCluster .brake { width:88px; min-width:88px; height:96px; min-height:96px; }
+    .mobile-mode #touchControls .pedalCluster .gas { width:96px; min-width:96px; height:104px; min-height:104px; }
+    .mobile-mode #touchControls .lookCluster { gap:10px; }
+    .mobile-mode #touchControls .lookCluster .cam { width:64px; min-width:64px; height:64px; min-height:64px; }
+    .mobile-mode #touchControls .lookCluster .cam::after,
+    .mobile-mode #walkControls .lookPad button::after { content:""; position:absolute; inset:-12px; }
+    .mobile-mode .hud { padding-bottom:216px; }
+    .mobile-mode .satTelemetry { display:none; }
+    .mobile-mode .game, .mobile-mode canvas { -webkit-user-select:none; user-select:none; }
+    .mobile-mode .walkPad { grid-template-columns:repeat(2,72px); grid-template-rows:repeat(2,72px); gap:10px; }
+    .mobile-mode .walkPad button { width:72px; min-width:72px; height:72px; min-height:72px; }
+    .mobile-mode .walkPad .forward { grid-column:1; grid-row:1; }
+    .mobile-mode .walkPad .strafeLeft { grid-column:2; grid-row:1; }
+    .mobile-mode .walkPad .back { grid-column:1; grid-row:2; }
+    .mobile-mode .walkPad .strafeRight { grid-column:2; grid-row:2; }
+    .mobile-mode .lookPad { grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,64px); gap:10px; }
+    .mobile-mode .lookPad button { width:64px; min-width:64px; height:64px; min-height:64px; }
+    .mobile-mode .lookPad .lookUp { grid-column:1; grid-row:1; }
+    .mobile-mode .lookPad .lookLeft { grid-column:2; grid-row:1; }
+    .mobile-mode .lookPad .lookDown { grid-column:1; grid-row:2; }
+    .mobile-mode .lookPad .lookRight { grid-column:2; grid-row:2; }
+    .mobile-mode .walkTouch .cluster { flex-direction:column; gap:12px; }
+    .mobile-mode .walkTouch .cluster button { width:72px; min-width:72px; height:72px; min-height:72px; font-size:7px; }
+    .mobile-mode .controlWord { display:inline; }
+    .mobile-mode .controlGlyph { display:none; }
+    .controlWord { display:none; }
+    .controlGlyph { display:inline; }
+    @media (max-width:600px) {
+      .touch { display:flex; }
+      .hud { grid-template-columns:1fr 1fr; gap:7px; padding-bottom:90px; }
+      .satTelemetry { display:none; }
+      .centerHud { position:absolute; top:max(132px,calc(env(safe-area-inset-top) + 132px)); left:50%; transform:translateX(-50%); }
+      .cameraChip { top:max(132px,calc(env(safe-area-inset-top) + 132px)); }
+      .mobile-mode #cameraChip { top:max(132px,calc(env(safe-area-inset-top) + 132px)); }
+      .meter { min-width:0; padding:7px 8px; border-width:2px; }
+      .meter .sub { font-size:8px; white-space:nowrap; }
+      .value { font-size:17px; }
+      .label { font-size:7px; }
+      .card { padding:16px; box-shadow:6px 6px 0 var(--shadow); }
+      .stripe { margin-bottom:16px; }
+      .tag { margin-bottom:16px; }
+      .keys { display:none; }
+      .graphicsChoices { grid-template-columns:repeat(3,1fr); }
+      .gfxChoice { padding:8px 4px; }
+      .shopGrid { grid-template-columns:1fr; }
+      .centerHud { width:min(320px,92vw); }
+      .viewSwitch,.shopSwitch { padding:5px 6px; font-size:6px; }
+      .touch { gap:16px; }
+      .touch button { touch-action:none; user-select:none; -webkit-user-select:none; position:relative; }
+      #touchControls { display:grid; grid-template-columns:84px minmax(16px,1fr) 284px; align-items:end; gap:0; padding-inline:max(3px,env(safe-area-inset-left)); }
+      #touchControls .steerCluster { grid-column:1; flex-direction:column; gap:12px; }
+      #touchControls .steerCluster button { width:84px; min-width:84px; height:96px; min-height:96px; font-size:16px; }
+      #touchControls .pedalCluster { grid-column:3; gap:12px; }
+      #touchControls .pedalCluster .fire { width:76px; min-width:76px; height:76px; min-height:76px; }
+      #touchControls .pedalCluster .brake { width:88px; min-width:88px; height:96px; min-height:96px; }
+      #touchControls .pedalCluster .gas { width:96px; min-width:96px; height:104px; min-height:104px; }
+      #touchControls .lookCluster { position:absolute; right:max(16px,env(safe-area-inset-right)); bottom:calc(max(8px,env(safe-area-inset-bottom)) + 116px); flex-direction:column; gap:10px; }
+      #touchControls .lookCluster .cam { width:64px; min-width:64px; height:64px; min-height:64px; font-size:10px; }
+      #touchControls #camCycle { display:block; }
+      .game.walking .touch.walkTouch { display:grid; grid-template-columns:154px minmax(12px,1fr) 138px 12px 72px; align-items:end; padding-inline:1px; gap:0; }
+      .touch.walkTouch .walkPad { grid-column:1; grid-template-columns:repeat(2,72px); grid-template-rows:repeat(2,72px); gap:10px; }
+      .touch.walkTouch .walkPad button { width:72px; min-width:72px; height:72px; min-height:72px; }
+      .touch.walkTouch .walkPad .forward { grid-column:1; grid-row:1; }
+      .touch.walkTouch .walkPad .strafeLeft { grid-column:2; grid-row:1; }
+      .touch.walkTouch .walkPad .back { grid-column:1; grid-row:2; }
+      .touch.walkTouch .walkPad .strafeRight { grid-column:2; grid-row:2; }
+      .touch.walkTouch .lookPad { grid-column:3; grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,64px); gap:10px; }
+      .touch.walkTouch .lookPad button { width:64px; min-width:64px; height:64px; min-height:64px; }
+      .touch.walkTouch .lookPad .lookUp { grid-column:1; grid-row:1; }
+      .touch.walkTouch .lookPad .lookLeft { grid-column:2; grid-row:1; }
+      .touch.walkTouch .lookPad .lookDown { grid-column:1; grid-row:2; }
+      .touch.walkTouch .lookPad .lookRight { grid-column:2; grid-row:2; }
+      .touch.walkTouch .lookPad button::after { content:""; position:absolute; inset:-12px; }
+      .touch.walkTouch .walkActions { grid-column:5; flex-direction:column; gap:12px; }
+      .touch.walkTouch .walkActions button { width:72px; min-width:72px; height:72px; min-height:72px; }
+      .mobile-mode .hud { padding-bottom:216px; }
+      .game.mobile-mode.walking .hud { padding-bottom:216px; }
+      .mobile-mode .flag { padding:6px 7px; font-size:7px; }
+      .mobile-mode .pitStatus { max-width:210px; margin-inline:auto; font-size:7px; }
+      .mobile-mode .card { width:100%; }
+      .mobile-mode h1 { font-size:clamp(23px,9vw,36px); }
+      .mobile-mode .choice,.mobile-mode .start,.mobile-mode .gfxChoice,.mobile-mode .ride { min-height:48px; }
+      .mobile-mode .shopItem { min-height:58px; }
+      .game.walking .hud { padding-bottom:116px; }
+    }
+    @media (max-width:350px) {
+      #touchControls { grid-template-columns:84px minmax(16px,1fr) 196px; padding-inline:2px; }
+      #touchControls .pedalCluster { display:grid; grid-template-columns:88px 96px; grid-template-rows:76px 96px; gap:12px; }
+      #touchControls .pedalCluster .fire { grid-column:1; grid-row:1; }
+      #touchControls .pedalCluster .brake { grid-column:1; grid-row:2; }
+      #touchControls .pedalCluster .gas { grid-column:2; grid-row:2; }
+      #touchControls .lookCluster { right:2px; bottom:calc(max(8px,env(safe-area-inset-bottom)) + 196px); flex-direction:row; }
+      .game.walking .touch.walkTouch { grid-template-columns:154px 12px 138px; padding-inline:6px; }
+      .touch.walkTouch .walkPad { grid-column:1; }
+      .touch.walkTouch .lookPad { grid-column:3; }
+      .touch.walkTouch .walkActions { position:absolute; right:6px; bottom:166px; flex-direction:row; }
+    }
+    @media (max-height:560px) and (orientation:landscape) {
+      .card { padding:12px 18px; width:min(620px,82vw); }
+      .stripe { margin-bottom:10px; height:6px; }
+      h1 { font-size:25px; margin-bottom:6px; }
+      .tag { margin-bottom:10px; line-height:1.25; }
+      .choice { padding:8px; }
+      .keys { display:none; }
+      .choices { margin-bottom:8px; }
+      .rideRow { margin-bottom:10px; }
+      .graphicsChoices { margin-bottom:9px; }
+      .gfxChoice { padding:7px 6px; }
+      .start { padding:11px; }
+      .touch button { width:50px;height:50px; }
+      .touch button.gas { width:60px;height:60px; }
+      .mobile-mode .hud { padding-bottom:82px; }
+      .mobile-mode #touchControls { display:grid; grid-template-columns:140px minmax(40%,1fr) 216px; align-items:end; padding-inline:max(8px,env(safe-area-inset-left)); }
+      .mobile-mode #touchControls .steerCluster { grid-column:1; flex-direction:row; gap:12px; }
+      .mobile-mode #touchControls .pedalCluster { grid-column:3; gap:12px; }
+      .mobile-mode #touchControls .steerCluster button,
+      .mobile-mode #touchControls .pedalCluster .fire,
+      .mobile-mode #touchControls .pedalCluster .brake,
+      .mobile-mode #touchControls .pedalCluster .gas { width:64px; min-width:64px; height:64px; min-height:64px; }
+      .mobile-mode #touchControls .lookCluster { left:auto; right:max(10px,env(safe-area-inset-right)); top:max(96px,calc(env(safe-area-inset-top) + 96px)); bottom:auto; transform:none; flex-direction:row; gap:10px; }
+      .mobile-mode #touchControls .lookCluster .cam { width:64px; min-width:64px; height:64px; min-height:64px; }
+      .game.mobile-mode.walking .touch.walkTouch { display:grid; grid-template-columns:138px minmax(40%,1fr) 138px 12px 140px; align-items:end; padding-inline:max(8px,env(safe-area-inset-left)); gap:0; }
+      .mobil
