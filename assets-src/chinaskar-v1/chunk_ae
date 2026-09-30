@@ -1,0 +1,390 @@
+2,TRACK_W*.32);}return true;}
+    const inPitZone=near.d<720||near.d>L-760;if(c.aiState==='pit'&&inPitZone){c.laneTarget=-TRACK_W*.455;if(Math.abs(near.side-c.laneTarget)<72&&Math.hypot(c.vx,c.vy)<94){c.aiPitTimer=2.8+c.damage*4+c.tireWear*1.8+(1-c.fuel)*2.5;c.vx*=.2;c.vy*=.2;c.pitStops=(c.pitStops||0)+1;return true;}}
+    return false;
+  }
+
+  // ================= NASCAR RACE CONTROL =================
+  // Authentic flag rules + caution procedure, as close to real NASCAR as the sim allows.
+  // Interfaces used (existing only): racePhase pace caps, per-car lineup slots, pace car,
+  // restart launch. Physics kernel + driver-brain decisions untouched.
+  // Toggles (owned by the options worker): window.CHINASKAR_OPTS.cautions / .paceCar
+  // (booleans, default true when absent) via optOn(); OFF means OFF.
+  function flagBanner(text,ms){ // the sim's flag stand: big center banner, self-clearing
+    if(!ui||!ui.countdown)return;ui.countdown.textContent=text;
+    setTimeout(()=>{if(ui.countdown&&ui.countdown.textContent===text)ui.countdown.textContent='';},ms);
+  }
+  function flagState(){ // canonical flag for the HUD flag stand
+    if(checkeredShown)return 'checkered';
+    if(racePhase==='checkered')return 'checkered';
+    if(racePhase==='caution'||racePhase==='stage'||racePhase==='restart')return 'yellow'; // stage breaks and one-to-go remain under yellow
+    if(whiteFlagShown&&racePhase==='green')return 'white'; // white flies for the leader's final lap under green only
+    if(racePhase==='green')return 'green';
+    return 'pace'; // opening pace laps: controlled, no passing
+  }
+  function leaderRaceD(){let m=player?player.raceD:-Infinity;for(const c of cars)if(!c.removed&&c.raceD>m)m=c.raceD;return m;}
+  function cautionBaseD(){ // no-pace-car fallback: the frozen leader sets the pace
+    for(const c of cautionOrder)if(!c.removed&&!c.towed)return mod(c.raceD,L);
+    return paceCar?paceCar.d:0;
+  }
+  function cautionSlotD(c){ // live slot: single file behind the pace car (or leader if pace car off)
+    if(paceCar&&optOn('paceCar'))return mod(paceCar.d-(c.cautionSlot+1)*cautionSlotGap,L);
+    const base=cautionBaseD();
+    return c.cautionSlot===0?base:mod(base-c.cautionSlot*cautionSlotGap,L);
+  }
+  function cautionCap(c){
+    // Single-file pacing: ease toward the lineup slot — a touch faster when
+    // behind it, slower when ahead. Wrecked/stopped cars keep desired (0) via Math.min.
+    let cap=86;
+    if(c.cautionSlot!==undefined&&c.cautionSlot>=0){
+      let err=forwardGap(mod(c.raceD,L),cautionSlotD(c));if(err>L/2)err-=L; // +behind slot, -ahead
+      cap=86+clamp(err*.22,-32,42);
+    }
+    if(c.waveAround)cap=Math.max(cap,132); // released to drive around to the tail
+    if(c.aiState==='pit')cap=Math.min(cap,72);
+    return cap;
+  }
+  function fieldLinedUp(){
+    // The head of the field must be formed up single-file behind the pace car.
+    // Back markers may still be circulating (NASCAR doesn't wait for stragglers);
+    // the player lines up on their own, so they're excluded from the check.
+    let n=0,bad=0;
+    for(const c of cautionOrder){
+      if(c.isPlayer||c.cautionSlot===undefined||c.cautionSlot>=48||c.removed||c.towed)continue;
+      let err=forwardGap(mod(c.raceD,L),cautionSlotD(c));if(err>L/2)err-=L;
+      n++;if(Math.abs(err)>130)bad++;
+    }
+    return n>0&&bad===0;
+  }
+  function freezeAndLineUp(allowLuckyDog){
+    // FREEZE: snapshot running order by scored distance at the yellow.
+    // APPROXIMATION: real NASCAR reverts to the last scoring loop at the line;
+    // the sim freezes on instantaneous raceD, which is what the sim scores on.
+    const all=[player,...cars].filter(c=>c&&!c.removed);
+    all.sort((a,b)=>b.raceD-a.raceD);
+    const leadD=all.length?all[0].raceD:0;
+    let lucky=null;
+    if(allowLuckyDog){
+      // LUCKY DOG (approx): first car a lap down gets the lap back, rejoins at the
+      // tail of the lead lap. Real rule: pass the pace car, physically drive around,
+      // rejoin at the tail — here the scored lap is restored and the car circulates
+      // to its tail slot at elevated caution pace.
+      luckyDogNum=-1;
+      for(const c of all)if(leadD-c.raceD>=L){c.raceD+=L;luckyDogNum=c.isPlayer?'YOU':'#'+c.num;lucky=c;break;}
+      all.sort((a,b)=>b.raceD-a.raceD);
+    }
+    // Single file behind the pace car; lapped cars scored to the rear (NASCAR restart rule).
+    const leadLap=all.filter(c=>leadD-c.raceD<L),lapped=all.filter(c=>leadD-c.raceD>=L);
+    if(lucky){const li=leadLap.indexOf(lucky);if(li>=0){leadLap.splice(li,1);leadLap.push(lucky);}} // lucky dog rejoins at the tail of the lead lap
+    const lineup=[...leadLap,...lapped].filter(c=>!c.towed);
+    cautionSlotGap=Math.min(72,L/Math.max(10,lineup.length+6));
+    if(paceCar&&optOn('paceCar')){
+      // The pace car PICKS UP THE LEADER.
+      // APPROXIMATION: it is placed on track ahead of the leader (as if exiting pit
+      // road) rather than driven out of the pits; the field then forms up behind it.
+      paceCar.d=mod((lineup.length?lineup[0].raceD:0)+520,L);paceCar.offT=0;
+    }
+    lineup.forEach((c,i)=>{c.cautionSlot=i;c.waveAround=false;if(!c.isPlayer)c.laneTarget=0;}); // single file: AI pins to the racing line; the player lines up on their own
+    cautionOrder=lineup;cautionLinedUp=false;
+  }
+  function triggerCaution(){
+    if(racePhase!=='green'&&racePhase!=='restart')return;
+    racePhase='caution';cautionCount++;lastCautionAt=raceTime;
+    freezeAndLineUp(true);
+    cautionMinTime=9;cautionMaxTime=45;whiteFlagShown=false; // a yellow wipes the white; it re-flies on the restart run
+    flagBanner('CAUTION',1500);hostSays('caution');
+  }
+  function extendCaution(){
+    // Fresh heavy incident under yellow: re-freeze, re-lineup, add pacing time.
+    // (Same caution, so no second lucky dog.) Total caution bounded by cautionMaxTime.
+    freezeAndLineUp(false);cautionMinTime=Math.max(cautionMinTime,7);lastCautionAt=raceTime;
+    flagBanner('CAUTION EXTENDED',1500);
+  }
+  function startRestart(){
+    // ONE TO GO: field formed; the pace car pulls off; single-file restart.
+    racePhase='restart';phaseTimer=5;paceCarPullOff=true;cautionLinedUp=true;
+    // WAVE-AROUND (approx): lapped cars physically ahead of the leader at the
+    // one-to-go are released to drive around and rejoin at the tail, mirroring the
+    // real wave-around. (The single-file lineup already scores lapped cars to the
+    // rear, so this rarely fires.)
+    const lead=cautionOrder[0];
+    if(lead){const leadPos=mod(lead.raceD,L);
+      for(const c of cautionOrder){
+        if(c===lead||c.removed||c.towed)continue;
+        const gap=forwardGap(leadPos,mod(c.raceD,L));
+        if(lead.raceD-c.raceD>=L&&gap<L/2&&gap>40)c.waveAround=true;
+      }
+    }
+    flagBanner('ONE TO GO',1600);
+  }
+  function goGreen(quiet){
+    // The green flag: the leader controls the launch; the field goes on the flag
+    // with per-driver stagger (running order + reaction), not a uniform unpause.
+    const order=(cautionOrder&&cautionOrder.length)?cautionOrder:null;
+    racePhase='green';
+    for(const c of cars){
+      const idx=order?order.indexOf(c):-1;
+      c.cautionSlot=undefined;c.waveAround=false;
+      c.launchAt=raceTime+.12+Math.max(0,Math.min(idx,80))*.025+((c.reaction||.12)*1.6);
+    }
+    if(player){player.launchAt=raceTime;player.cautionSlot=undefined;player.waveAround=false;}
+    cautionOrder=[];cautionLinedUp=false;paceCarPullOff=false;
+    if(!quiet){flagBanner('GREEN FLAG!',1600);hostSays('green');}
+  }
+  function whiteCheckeredTick(){
+    // White and checkered fly for the LEADER, like real NASCAR.
+    // APPROXIMATIONS: no green-white-checkered overtime — the white simply re-flies
+    // on the restart run; if the leader takes the checkered under yellow, the race
+    // ends under caution with the field frozen, as in real NASCAR.
+    if(checkeredShown||state!=='racing')return;
+    const leadD=leaderRaceD();
+    if(!Number.isFinite(leadD))return;
+    // White = the leader's FINAL LAP, under green only. No selectedLaps>1 gate:
+    // in a 1-lap race the whole race is the final lap, so the white flies at
+    // the green (it re-flies on the restart run after a yellow wipes it).
+    if((racePhase==='green'||racePhase==='restart')&&!whiteFlagShown&&Math.floor(leadD/L)>=selectedLaps-1){
+      whiteFlagShown=true;flagBanner('WHITE FLAG · FINAL LAP',2400);
+    }
+    if(leadD>=L*selectedLaps){
+      checkeredShown=true;checkeredAt=raceTime;
+      for(const c of cars){c.cautionSlot=undefined;c.waveAround=false;}
+      cautionOrder=[];
+      flagBanner(racePhase==='caution'?'CHECKERED · UNDER CAUTION':'CHECKERED FLAG!',2600);
+      racePhase='checkered';phaseTimer=8; // cool-down: field holds ~92, then results
+      if(player&&player.raceD>=L*selectedLaps&&!player.finished)finishRace();
+    }
+  }
+  // =============== END NASCAR RACE CONTROL ===============
+
+  function updateAI(dt){
+    physicsTick++;incidentHeat=Math.max(0,incidentHeat-dt*.32);
+    // ---- NASCAR RACE CONTROL state machine (flag rules + caution procedure) ----
+    if(racePhase==='pace'){phaseTimer-=dt;if(phaseTimer<=0)goGreen(true);}
+    if(racePhase==='caution'){
+      if(!optOn('cautions'))goGreen(true); // OFF means OFF, even mid-caution
+      else{
+        cautionMinTime-=dt;cautionMaxTime-=dt;
+        cautionLinedUp=fieldLinedUp(); // live for the HUD/QA: true once the head of the field is formed up
+        // Fresh heavy incident under yellow: re-freeze and re-run the lineup.
+        if(incidentHeat>7.5&&raceTime-lastCautionAt>14&&cautionMinTime<6)extendCaution();
+        else if(cautionMaxTime<=0||(cautionMinTime<=0&&cautionLinedUp))startRestart();
+      }
+    }
+    else if(racePhase==='restart'){
+      phaseTimer-=dt;
+      if(optOn('cautions')&&incidentHeat>7.2&&raceTime-lastCautionAt>14)triggerCaution(); // yellow back out before the green
+      else if(phaseTimer<=0)goGreen(false);
+    }
+    else if(racePhase==='checkered'){phaseTimer-=dt;if(phaseTimer<=0||(player&&player.raceD>=L*selectedLaps&&!player.finished))finishRace();}
+    if(optOn('cautions')&&incidentHeat>5.8&&racePhase==='green'&&raceTime-lastCautionAt>18)triggerCaution();
+    whiteCheckeredTick();
+    for(let i=0;i<cars.length;i++){
+      const c=cars[i]; if(c.removed)continue;
+      if(selectedCars===420&&((i+physicsTick)&1)&&!c.towed){c.prevX=c.x;c.prevY=c.y;continue;}
+      if(c.towed){const back=28+(tow.carry===c?0:10);c.x=tow.x-Math.cos(tow.angle)*back;c.y=tow.y-Math.sin(tow.angle)*back;c.angle=tow.angle;c.vx=tow.vx;c.vy=tow.vy;c.roll+=(0-c.roll)*dt*4;if(Math.abs(c.roll)<.08)c.rolled=false;continue;}
+      c.hit=Math.max(0,c.hit-dt);c.intentTime-=dt;
+      const near=nearestAroundInto(c.d,c.x,c.y,c._near), speed=Math.hypot(c.vx,c.vy), pNow=near.p;
+      if(updateAIPit(c,near,dt))continue;
+      let delta=near.d-c.lastD;if(delta>L/2)delta-=L;if(delta<-L/2)delta+=L;
+      if(Math.abs(delta)<L*.08)c.raceD+=delta;c.lastD=near.d;c.d=c.raceD;c.speed=speed;
+      let draft=0,hazard=0,escape=0,closest=999,leadGap=999,sidePressure=0;
+      for(let j=Math.max(0,i-26);j<Math.min(cars.length,i+27);j++){
+        const o=cars[j];if(o===c||o.removed||o.towed)continue;
+        const dx=o.x-c.x,dy=o.y-c.y,along=dx*pNow.tx+dy*pNow.ty,across=dx*pNow.nx+dy*pNow.ny;
+        if(along>8&&along<132&&Math.abs(across)<25&&!o.wrecked){draft=Math.max(draft,1-along/132);leadGap=Math.min(leadGap,along);}
+        if(Math.abs(along)<34&&Math.abs(across)<42)sidePressure+=Math.sign(across||1)*(1-Math.abs(across)/42);
+        const dangerWidth=o.wrecked||o.rolled?62:27,dangerRange=o.wrecked||o.rolled?230:128;
+        if(along>-12&&along<dangerRange&&Math.abs(across)<dangerWidth){const urgency=(1-clamp(along/dangerRange,0,1))*(o.wrecked||o.rolled?1.8:1);hazard=Math.max(hazard,urgency);closest=Math.min(closest,Math.max(0,along));escape+=across>0?-urgency:urgency;}
+      }
+      if(player){const dx=player.x-c.x,dy=player.y-c.y,along=dx*pNow.tx+dy*pNow.ty,across=dx*pNow.nx+dy*pNow.ny;if(along>-5&&along<128&&Math.abs(across)<30){const u=1-clamp(along/128,0,1);hazard=Math.max(hazard,u);escape+=across>0?-u:u;}}
+      const laneLimit=TRACK_W*.43,phaseSlow=racePhase==='caution'||racePhase==='pace'||racePhase==='restart'||racePhase==='checkered';
+      c.adaptiveAggression=clamp((c.adaptiveAggression||.5)+((racePhase==='green'&&hazard<.18)?.012:-.04)*dt-(incidentHeat*.006)*dt,.16,.92);
+      if(c.intentTime<=0){
+        const strategyRisk=(1-c.skill)*.08+(c.strategyOffset||0);
+        if(c.damage>.48+c.skill*.14||c.tireWear>.7+c.skill*.12||c.fuel<.12+strategyRisk)c.aiState='pit';
+        else if(hazard>.28)c.aiState='avoid';
+        else if(phaseSlow)c.aiState='pace';
+        else if(leadGap<92&&c.aggression*c.adaptiveAggression>.34)c.aiState='overtake';
+        else if(Math.abs(sidePressure)>.35&&c.aggression>.48)c.aiState='defend';
+        else if(leadGap<48&&c.discipline>.72)c.aiState='yield';
+        else c.aiState=draft>.18?'follow':'pace';
+        c.intentTime=.55+c.reaction*2.4;
+      }
+      if(c.aiState==='avoid')c.laneTarget=clamp(c.laneTarget+Math.sign(escape||-sidePressure||Math.sin(c.wobble))*dt*(120+hazard*190),-laneLimit,laneLimit);
+      else if(c.aiState==='overtake')c.laneTarget=clamp(c.laneTarget+(Math.sin(c.wobble)>0?1:-1)*dt*(35+42*c.aggression),-laneLimit,laneLimit);
+      else if(c.aiState==='defend')c.laneTarget=clamp(c.laneTarget-Math.sign(sidePressure)*dt*34,-laneLimit,laneLimit);
+      else if(c.aiState==='pit')c.laneTarget+=(-laneLimit*.98-c.laneTarget)*dt*.75;
+      else if(c.aiState==='follow'||phaseSlow)c.laneTarget+=(clamp(Math.round(c.laneTarget/32)*32,-laneLimit,laneLimit)-c.laneTarget)*dt*.8;
+      if(Math.abs(near.side)>TRACK_W*.45)c.laneTarget*=.955;
+      const lookDistance=72+speed*.42+c.reaction*90,look=pathAtInto(near.d+lookDistance,c._look),tx=look.x+look.nx*c.laneTarget,ty=look.y+look.ny*c.laneTarget;
+      const wanted=Math.atan2(ty-c.y,tx-c.x),err=Math.atan2(Math.sin(wanted-c.angle),Math.cos(wanted-c.angle));
+      const curveP=pathAtInto(near.d+145+speed*.2,c._curve),curve=Math.abs(Math.atan2(Math.sin(curveP.angle-pNow.angle),Math.cos(curveP.angle-pNow.angle)));
+      let desired=c.target-curve*172-c.damage*62+draft*(c.aiState==='overtake'?27:16)+Math.sin(raceTime*.34+c.wobble)*2.5;
+      if(selectedTrack==='moon')desired*=.78;
+      if(racePhase==='pace')desired=Math.min(desired,startMode==='rolling'?118:82);
+      if(racePhase==='caution')desired=Math.min(desired,cautionCap(c)); // RACE CONTROL: single-file lineup pacing
+      if(racePhase==='restart')desired=Math.min(desired,c.waveAround?152:116+phaseTimer*3);
+      if(racePhase==='checkered')desired=Math.min(desired,92); // cool-down lap
+      if(racePhase==='green'&&raceTime<(c.launchAt||0))desired=Math.min(desired,118); // RACE CONTROL: restart launch stagger — leader controls, field goes on the flag
+      if(c.aiState==='yield')desired-=24;if(c.aiState==='pit')desired=Math.min(desired,72);
+      if(c.aiState==='overtake'&&curve<.18&&leadGap<72)desired+=10+18*c.skill;
+      if(hazard>.16)desired-=hazard*(38+110*c.skill);
+      desired-=hazard*c.caution*(closest<54?225:126);
+      if(c.exploded||c.rolled){desired=0;c.spin=Math.max(c.spin,.18);}
+      else if(c.wrecked){c.stuck=speed<16?c.stuck+dt:Math.max(0,c.stuck-dt*2);c.laneTarget=clamp(c.laneTarget+(near.side>=0?1:-1)*dt*64,-laneLimit,laneLimit);desired=c.stuck>1.2?-28:54-c.damage*24;if(!c.driverOut&&drivers.length<38&&Math.random()<dt*.32){c.driverOut=true;spawnDriver(c);}}
+      if(c.spin>0)c.spin-=dt;else if(racePhase==='green'&&Math.random()<dt*.000055&&speed>168){c.spin=.45+Math.random()*.65;c.spinDir=Math.random()<.5?-1:1;c.yaw+=c.spinDir*(.65+Math.random()*.6);}
+      const speedError=desired-speed,throttle=clamp(speedError/(82+12*(1-c.skill)),0,1),brake=clamp(-speedError/(58+20*c.skill),0,1),surface=surfaceGripAt(c.x,c.y,near.off>TRACK_W*.52?.38:1),stepDt=selectedCars===420?dt*2:dt;
+      const k=stockCarKernel(c,{steer:clamp(err*(2.15+c.discipline*.58),-1,1),throttle:throttle*(draft>.2?1.025:1),brake},stepDt,surface);
+      const afterNear=nearestAroundInto(c.d,c.x,c.y,c._near);resolveTrackBoundary(c,afterNear,false);
+      if(afterNear.off>TRACK_W*.49)c.laneTarget*=.86;if((k.slip>.58||Math.abs(k.v)>54)&&speed>126&&physicsTick%3===i%3)addSkid(c);
+    }
+    resolvePackCollisions();
+  }
+  function gridKey(gx,gy){return (gx+32768)*65536+(gy+32768);}
+  function bodySize(c){return c===tow?{l:20,w:11}:{l:16,w:9};}
+  function overlapAxis(a,b,ax,ay,sa,sb){
+    const afx=Math.cos(a.angle),afy=Math.sin(a.angle),arx=-afy,ary=afx,bfx=Math.cos(b.angle),bfy=Math.sin(b.angle),brx=-bfy,bry=bfx;
+    const ra=Math.abs(ax*afx+ay*afy)*sa.l+Math.abs(ax*arx+ay*ary)*sa.w;
+    const rb=Math.abs(ax*bfx+ay*bfy)*sb.l+Math.abs(ax*brx+ay*bry)*sb.w;
+    return ra+rb-Math.abs((b.x-a.x)*ax+(b.y-a.y)*ay);
+  }
+  function sweptContact(a,b,radius){
+    const sx=(b.prevX??b.x)-(a.prevX??a.x),sy=(b.prevY??b.y)-(a.prevY??a.y),ex=b.x-a.x,ey=b.y-a.y,dx=ex-sx,dy=ey-sy;
+    const A=dx*dx+dy*dy,B=2*(sx*dx+sy*dy),C=sx*sx+sy*sy-radius*radius;if(A<.0001||C<=0)return null;
+    const disc=B*B-4*A*C;if(disc<0)return null;const t=(-B-Math.sqrt(disc))/(2*A);if(t<0||t>1)return null;
+    const cx=sx+dx*t,cy=sy+dy*t,d=Math.hypot(cx,cy)||1;return {nx:cx/d,ny:cy/d,t};
+  }
+  function collideNearby(subject,radius,isPlayer){
+    const cell=48,gx=Math.floor(subject.x/cell),gy=Math.floor(subject.y/cell),reach=Math.max(1,Math.ceil(radius/cell));
+    for(let yy=-reach;yy<=reach;yy++)for(let xx=-reach;xx<=reach;xx++){const list=collisionBuckets.get(gridKey(gx+xx,gy+yy));if(!list)continue;for(let k=0;k<list.length;k++){const c=cars[list[k]];if(!c.removed&&!c.towed)collideCars(subject,c,isPlayer);}}
+  }
+  function resolvePackCollisions(){
+    const cell=48;collisionBuckets.clear();activeCollisionBuckets.length=0;
+    for(let i=0;i<cars.length;i++){
+      const c=cars[i];if(c.removed||c.towed)continue;const key=gridKey(Math.floor(c.x/cell),Math.floor(c.y/cell));let bucket=collisionBuckets.get(key);
+      if(!bucket){bucket=[];collisionBuckets.set(key,bucket);}bucket.push(i);
+    }
+    for(let i=0;i<cars.length;i++){
+      const a=cars[i];if(a.removed||a.towed)continue;const gx=Math.floor(a.x/cell),gy=Math.floor(a.y/cell);
+      for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const list=collisionBuckets.get(gridKey(gx+xx,gy+yy));if(!list)continue;for(let k=0;k<list.length;k++){const j=list[k];if(j>i)collideCars(a,cars[j],false);}}
+    }
+    if(player)collideNearby(player,42,true);if(tow)collideNearby(tow,48,activeMode==='tow');
+  }
+  function collideCars(a,b,involvesPlayer){
+    if(!a||!b||a===b||a.removed||b.removed)return;
+    const sa=bodySize(a),sb=bodySize(b),af={x:Math.cos(a.angle),y:Math.sin(a.angle)},ar={x:-af.y,y:af.x},bf={x:Math.cos(b.angle),y:Math.sin(b.angle)},br={x:-bf.y,y:bf.x};
+    let best=Infinity,nx=0,ny=0,overlap=true;
+    for(const axis of [af,ar,bf,br]){const o=overlapAxis(a,b,axis.x,axis.y,sa,sb);if(o<=0){overlap=false;break;}if(o<best){best=o;nx=axis.x;ny=axis.y;}}
+    let swept=null;if(!overlap)swept=sweptContact(a,b,14.5);if(!overlap&&!swept)return;
+    const centerDx=b.x-a.x,centerDy=b.y-a.y;if(swept){nx=swept.nx;ny=swept.ny;best=.35;const ta=swept.t;a.x=(a.prevX??a.x)+(a.x-(a.prevX??a.x))*ta;a.y=(a.prevY??a.y)+(a.y-(a.prevY??a.y))*ta;b.x=(b.prevX??b.x)+(b.x-(b.prevX??b.x))*ta;b.y=(b.prevY??b.y)+(b.y-(b.prevY??b.y))*ta;}else if(centerDx*nx+centerDy*ny<0){nx=-nx;ny=-ny;}
+    const ma=a.mass||1540,mb=b.mass||1540,invA=1/ma,invB=1/mb,totalInv=invA+invB,slop=.3,correction=Math.max(0,best-slop)*.76/totalInv;
+    a.x-=nx*correction*invA;a.y-=ny*correction*invA;b.x+=nx*correction*invB;b.y+=ny*correction*invB;
+    let rvx=b.vx-a.vx,rvy=b.vy-a.vy,normalSpeed=rvx*nx+rvy*ny,impact=Math.max(0,-normalSpeed);
+    if(normalSpeed<0){
+      const restitution=impact>95?.12:.035,j=-(1+restitution)*normalSpeed/totalInv;
+      a.vx-=nx*j*invA;a.vy-=ny*j*invA;b.vx+=nx*j*invB;b.vy+=ny*j*invB;
+      rvx=b.vx-a.vx;rvy=b.vy-a.vy;const tx=-ny,ty=nx,tangentSpeed=rvx*tx+rvy*ty;
+      const jt=clamp(-tangentSpeed/totalInv,-j*.42,j*.42);a.vx-=tx*jt*invA;a.vy-=ty*jt*invA;b.vx+=tx*jt*invB;b.vy+=ty*jt*invB;
+      const sideA=Math.abs(nx*ar.x+ny*ar.y),sideB=Math.abs(nx*br.x+ny*br.y),yawKick=clamp(tangentSpeed*.0022,-.52,.52);
+      a.yaw=clamp((a.yaw||0)-yawKick*(mb/(ma+mb))*sideA,-2.35,2.35);b.yaw=clamp((b.yaw||0)+yawKick*(ma/(ma+mb))*sideB,-2.35,2.35);
+    }
+    if(impact<7)return;
+    const hitDamage=Math.max(0,impact-16)*.00105;
+    // OFF=OFF: with deforming damage disabled, collisions never accumulate
+    // damage or baked body deformation, so the renderers have nothing to show.
+    if(damageFxOn()){a.damage=clamp((a.damage||0)+hitDamage,0,1);b.damage=clamp((b.damage||0)+hitDamage,0,1);
+    const frontA=nx*af.x+ny*af.y,frontB=-(nx*bf.x+ny*bf.y);a.bodyFront=clamp((a.bodyFront||0)+hitDamage*(frontA>.35?1.6:.35),0,1);b.bodyFront=clamp((b.bodyFront||0)+hitDamage*(frontB>.35?1.6:.35),0,1);}
+    if(impact>68)burstExplosion((a.x+b.x)/2,(a.y+b.y)/2,'small');
+    if(impact>74){a.spin=Math.max(a.spin||0,.1);b.spin=Math.max(b.spin||0,.1);debris((a.x+b.x)/2,(a.y+b.y)/2,2+Math.floor(impact/38));incidentHeat+=impact>108?.55:.12;}
+    if(impact>104){for(const [c,normalSign] of [[a,-1],[b,1]])if(c!==tow){const cf=Math.cos(c.angle),cs=Math.sin(c.angle),lateralSigned=normalSign*(nx*-cs+ny*cf),lateral=Math.abs(lateralSigned);if(lateral>.55){c.rollDir=Math.sign(lateralSigned)||1;c.rollKick=(c.rollKick||0)+clamp((impact-78)/22,.9,3.4);c.rollV=(c.rollV||0)+c.rollDir*clamp((impact-78)/6,8.8,12);c.tumbleEnergy=(c.tumbleEnergy||0)+clamp((impact-70)/24,1.25,5.5);c.bounceV=Math.max(c.bounceV||0,clamp((impact-76)/5,5,26));c.bounceZ=Math.max(c.bounceZ||0,1.5);}}}
+    if(impact>112){burstExplosion((a.x+b.x)/2,(a.y+b.y)/2,'medium');for(const c of [a,b])if(c!==tow){if(!c.isPlayer&&!c.driverOut&&drivers.length<38&&Math.random()<.1){c.wrecked=true;c.driverOut=true;spawnDriver(c);}if(optOn('hazards')&&Math.random()<.09+(c.damage||0)*.22)c.leak=true;}}
+    if((a.damage||0)>.72&&a!==tow)a.wrecked=true;if((b.damage||0)>.72&&b!==tow)b.wrecked=true;
+    a.hit=.1;b.hit=.1;if(involvesPlayer){shake=Math.min(11,shake+impact*.026);lastImpact=impact;chaseRig.springV=clamp(chaseRig.springV+impact*.016,-3.5,3.5);cockpitRig.springVX=clamp(cockpitRig.springVX-nx*impact*.00055,-.45,.45);cockpitRig.springVY=clamp(cockpitRig.springVY-ny*impact*.00055,-.45,.45);impactSound(impact);}
+  }
+  function resolveTrackBoundary(c,near,isPlayer=false){
+    if(!c||c.removed||c.towed)return;const limit=TRACK_W*.515;if(near.off<=limit)return;
+    const side=near.side>=0?1:-1,nx=near.p.nx*side,ny=near.p.ny*side,over=near.off-limit;
+    c.x-=nx*(over+.2);c.y-=ny*(over+.2);const vn=c.vx*nx+c.vy*ny;
+    if(vn>0){
+      const impact=vn;c.vx-=nx*vn*1.08;c.vy-=ny*vn*1.08;const wallDrag=impact>58?.94:.975;c.vx*=wallDrag;c.vy*=wallDrag;c.yaw=clamp((c.yaw||0)-side*vn*.0045,-2.2,2.2);
+      if(impact>18){
+        if(damageFxOn()){
+          const wallDamage=clamp((impact-10)/125,.035,.46);c.damage=clamp((c.damage||0)+wallDamage,0,1);c.bodyFront=clamp((c.bodyFront||0)+wallDamage*.9,0,1);c.bodyRear=clamp((c.bodyRear||0)+wallDamage*.42,0,1);
+          if(impact>46&&physicsTick-(c.wallDebrisTick??-999)>8){c.wallDebrisTick=physicsTick;debris(c.x-nx*10,c.y-ny*10,2+Math.floor(impact/34));}
+        }
+        if(impact>52)spark(c.x,c.y,Math.min(12,3+Math.floor(impact/15)));
+        const cf=Math.cos(c.angle),cs=Math.sin(c.angle),sideLoad=Math.abs(nx*-cs+ny*cf);if(impact>96&&sideLoad>.72){c.rollDir=Math.sign(nx*-cs+ny*cf)||side;c.rollKick=(c.rollKick||0)+clamp((impact-78)/28,.65,2.4);c.rollV=(c.rollV||0)+c.rollDir*clamp((impact-82)/11,3.8,8.5);c.tumbleEnergy=(c.tumbleEnergy||0)+clamp((impact-78)/30,.9,4.2);c.bounceV=Math.max(c.bounceV||0,clamp((impact-82)/6,4,21));}
+        if(impact>118&&optOn('hazards')&&Math.random()<.12)c.leak=true;
+        if(isPlayer){shake=Math.min(11,shake+impact*.035);lastImpact=impact;chaseRig.springV=clamp(chaseRig.springV+impact*.02,-3.5,3.5);cockpitRig.springVX=clamp(cockpitRig.springVX-nx*impact*.0008,-.45,.45);impactSound(impact);}
+      }
+    }
+  }
+  function spawnDriver(c){if(!optOn('ragdoll'))return;drivers.push({x:c.x,y:c.y,vx:(Math.random()-.5)*32,vy:(Math.random()-.5)*32,dir:Math.random()*TAU,state:Math.random()<.48?'crawl':'wander',bonk:0,spin:0,taken:false,color:c.color,ragdoll:0,popUp:0,bits:false});}
+  function updatePlayer(dt){
+    const p=player,controlled=activeMode==='race';
+    const touchRamp=dir=>{
+      const ticksKey=dir+'Ticks';
+      if(!keys[dir]){touchSteer[ticksKey]=0;return 0;}
+      if(!touchSteer[dir]||!optOn('steeringAssist'))return 1;
+      const held=touchSteer[ticksKey]*dt;touchSteer[ticksKey]++;
+      return PHYS_PLAYER.touchBite+(1-PHYS_PLAYER.touchBite)*Math.min(1,held/PHYS_PLAYER.touchRampTime);
+    };
+    let steerInput=controlled?(-touchRamp('left')+touchRamp('right')):0;
+    if(pitState){p.vx=0;p.vy=0;p.yaw=0;p.steer*=.8;return;}
+    const fx=Math.cos(p.angle),fy=Math.sin(p.angle),rx=-fy,ry=fx;
+    let drafted=false;for(const c of cars){if(c.removed||c.towed)continue;const along=(c.x-p.x)*fx+(c.y-p.y)*fy,across=Math.abs((c.x-p.x)*rx+(c.y-p.y)*ry);if(along>12&&along<92&&across<19){drafted=true;break;}}
+    const near=nearestPath(p.x,p.y),onTrack=near.off<TRACK_W*.52,pitZone=near.d<820||near.d>L-900;
+    if(controlled&&pitRequest&&pitZone){const laneErr=(-TRACK_W*.455-near.side)/260;const headErr=Math.atan2(Math.sin(near.p.angle-p.angle),Math.cos(near.p.angle-p.angle));steerInput=clamp(steerInput*.42+laneErr+headErr*1.8,-1,1);}
+    const paceAssist=controlled&&!keys.gas&&!keys.brake&&(racePhase==='pace'||racePhase==='restart'||racePhase==='caution')?.48:0;
+    const surface=surfaceGripAt(p.x,p.y,onTrack?1:.34);let throttle=controlled&&!p.exploded&&!p.rolled?(keys.gas?1:paceAssist):0,brake=controlled&&keys.brake?1:0;
+    // RACE CONTROL: yellow means hold NASCAR pace speed (soft cap; the sim does not black-flag the player).
+    if(racePhase==='caution'&&controlled&&!p.exploded&&!p.rolled&&Math.hypot(p.vx,p.vy)>132){throttle=0;brake=Math.max(brake,.4);}
+    if(pitRequest&&pitZone&&Math.hypot(p.vx,p.vy)>88){throttle=0;brake=Math.max(brake,.72);}
+    p.steerInputRaw=steerInput;
+    const k=stockCarKernel(p,{steer:steerInput,throttle:throttle*(drafted?1.035:1),brake},dt,surface);
+    if((Math.abs(k.alphaF)>.13||Math.abs(k.alphaR)>.15||p.slip>.5)&&k.speed>78&&physicsTick%2===0)addSkid(p);
+    let after=nearestPath(p.x,p.y);resolveTrackBoundary(p,after,true);if(after.off>TRACK_W*.515)after=nearestPath(p.x,p.y);
+    const now=after.d;let delta=now-p.lastD;if(delta>L/2)delta-=L;if(delta<-L/2)delta+=L;
+    if(Math.abs(delta)<L*.1)p.raceD+=delta;p.lastD=now;p.trackD=now;p.lap=Math.max(0,Math.floor(p.raceD/L));
+    // RACE CONTROL: the player only finishes once the checkered has flown for
+    // the leader. Crossing the distance early (lucky-dog/wave-around ordering,
+    // AI ordering quirks) must not end the race before race control does.
+    // Lapped players still get their results via the checkered-phase cooldown
+    // in updateAI, so this gate cannot strand the finish screen.
+    if(checkeredShown&&p.raceD>=L*selectedLaps&&!p.finished)finishRace();
+  }
+  function updatePitSystem(dt){
+    if(!optOn('pitStops'))return;
+    if(!player)return;const near=nearestPath(player.x,player.y),pitZone=near.d<680||near.d>L-760;
+    if(!pitState&&pitRequest&&pitZone&&near.side<-TRACK_W*.31&&Math.hypot(player.vx,player.vy)<98){const total=2.2+(1-player.fuel)*3.2+player.tireWear*2.2+player.damage*5.4;pitState={timer:total,total,stage:'JACK UP'};player.pitStops=(player.pitStops||0)+1;pitRequest=false;document.getElementById('pitBtn').classList.remove('requested');player.x=near.p.x+near.p.nx*(-TRACK_W*.455);player.y=near.p.y+near.p.ny*(-TRACK_W*.455);player.angle=near.p.angle;player.vx=0;player.vy=0;}
+    if(!pitState)return;pitState.timer-=dt;const elapsed=pitState.total-pitState.timer;if(elapsed<.8)pitState.stage='JACK UP';else if(elapsed<2.2)pitState.stage='FOUR TIRES';else if(elapsed<Math.max(2.8,pitState.total-1.4))pitState.stage='REFUEL';else pitState.stage='DAMAGE REPAIR';ui.pitStatus.textContent=pitState.stage+' · '+Math.max(0,pitState.timer).toFixed(1)+'s';
+    if(pitState.timer<=0){player.damage*=.18;player.bodyFront*=.15;player.bodyRear*=.15;player.tireWear=.02;player.tireHeat=.22;player.fuel=1;player.leak=false;player.fire=0;pitState=null;ui.pitStatus.textContent='PIT COMPLETE · GO!';setTimeout(()=>{if(!pitState&&!pitRequest)ui.pitStatus.textContent='';},1600);}
+  }
+  function updateTow(dt){
+    if(!optOn('towTruck'))return;
+    const t=tow;if(!t)return;
+    if(!svcOn('towTruck')){t.flash+=dt;t.serviceState='DEPOT';return;} // toggle: OFF means the unit stays parked
+    t.prevX=t.x;t.prevY=t.y;const controlled=activeMode==='tow',near=nearestPath(t.x,t.y);
+    if(!controlled&&!t.carry&&!t.targetCar){let bd=Infinity;for(const c of [player,...cars]){if(!c||(!c.wrecked&&!c.rolled)||c.removed||c.towed)continue;const q=forwardGap(near.d,nearestPath(c.x,c.y).d);if(q<bd){bd=q;t.targetCar=c;}}if(t.targetCar){t.serviceState='ENTRY';t.svcT=0;}}
+    if(t.targetCar&&(t.targetCar.removed||t.targetCar.towed)&&t.targetCar!==t.carry)t.targetCar=null;
+    // Dispatch watchdog: a wreck must never sit forever. If the unit cannot
+    // close on its target within 45s (bad angle, blocked lane), drop it and
+    // re-dispatch instead of parking on a hopeless approach.
+    if(t.targetCar&&!controlled){t.svcT=(t.svcT||0)+dt;if(t.serviceState==='TRACK'&&t.svcT>45){t.targetCar=null;t.serviceState='ENTRY';t.svcT=0;}}
+    let target=null,targetSpeed=0;
+    if(!controlled){
+      if(t.carry)t.serviceState=t.serviceState==='GATE'?'GATE':'EXIT';
+      if(t.serviceState==='DEPOT'){target=facilityPoint(t.homeD,-.72);targetSpeed=38;}
+      else if(t.serviceState==='ENTRY'){target=facilityPoint(L-300,-.43);targetSpeed=78;if(Math.hypot(t.x-target.x,t.y-target.y)<54)t.serviceState='TRACK';}
+      else if(t.serviceState==='TRACK'&&t.targetCar){const td=nearestPath(t.targetCar.x,t.targetCar.y).d,gap=forwardGap(near.d,td);if(gap<120){target=t.targetCar;targetSpeed=38;}else{target=facilityPoint(near.d+clamp(gap*.32,95,360),clamp(nearestPath(t.targetCar.x,t.targetCar.y).side/TRACK_W,-.38,.38));targetSpeed=108;}}
+      else if(t.serviceState==='EXIT'){const gap=forwardGap(near.d,700);target=facilityPoint(near.d+clamp(gap,70,320),-.42);targetSpeed=92;if(gap<95)t.serviceState='GATE';}
+      else if(t.serviceState==='GATE'){target=facilityPoint(700,-.72);targetSpeed=55;if(Math.hypot(t.x-target.x,t.y-target.y)<60){if(t.carry){t.carry.removed=true;t.carry.towed=false;t.carry=null;spark(t.x,t.y,10);}t.targetCar=null;t.serviceState='DEPOT';}}
+    }
+    const fx=Math.cos(t.angle),fy=Math.sin(t.angle),rx=-fy,ry=fx;let fwd=t.vx*fx+t.vy*fy,lat=t.vx*rx+t.vy*ry,steerInput=controlled?((keys.left?-1:0)+(keys.right?1:0)):0,autoGas=false;
+    if(target){const wanted=Math.atan2(target.y-t.y,target.x-t.x),err=Math.atan2(Math.sin(wanted-t.angle),Math.cos(wanted-t.angle)),dist=Math.hypot(target.x-t.x,target.y-t.y);steerInput=clamp(err*2.35,-1,1);autoGas=dist>24;if(dist<95)targetSpeed*=dist/95;}
+    t.steer+=(steerInput*.7-t.steer)*dt*7;if((controlled&&keys.gas)||autoGas)fwd+=165*dt;if(!controlled&&targetSpeed>0&&fwd>targetSpeed)fwd-=220*dt;if(controlled&&keys.brake)fwd-=Math.sign(fwd||1)*clamp(285*dt,0,Math.abs(fwd)+12*dt);
+    const limit=t.carry?105:142;fwd=clamp(fwd,-42,limit);t.yaw+=(fwd/68*Math.tan(t.steer)-t.yaw)*dt*4.3;t.angle+=t.yaw*dt;lat*=Math.exp(-6*dt);fwd*=Math.exp(-.54*dt);const nfx=Math.cos(t.angle),nfy=Math.sin(t.angle),nrx=-nfy,nry=nfx;t.vx=nfx*fwd+nrx*lat;t.vy=nfy*fwd+nry*lat;t.x+=t.vx*dt;t.y+=t.vy*dt;t.flash+=dt;t.trackD=near.d;
+    const after=nearestPath(t.x,t.y),limitSide=TRACK_W*.9;if(after.off>limitSide){const sign=after.side>=0?1:-1;t.x=after.p.x+after.p.nx*limitSide*sign;t.y=after.p.y+after.p.ny*limitSide*sign;t.vx*=.45;t.vy*=.45;}
+    if(!t.carry){let best=null,bd=38;for(const c of [player,...cars]){if(!c||(!c.wrecked&&!c.rolled)||c.removed||c.towed)continue;const d=Math.hypot(c.x-t.x,c.y-t.y);if(d<bd){best=c;bd=d;}}if(best){if(best.rolled){best.roll=0;best.rollV=0;best.rolled=false;best.wrecked=best.damage>.55;best.vx*=.25;best.vy*=.25;spark(best.x,best.y,8);hostSays('tow');}if(best!==player&&best.wrecked){best.towed=true;t.carry=best;t.targetCar=best;t.serviceState='EXIT';t.svcT=0;spark(best.x,best.y,8);hostSays('tow');}else if(best===player&&!best.rolled){t.targetCar=null;t.serviceState='EXIT';t.svcT=0;}else if(t.targetCar===best){t.targetCar=null;t.svcT=0;}}}
+    if(t.carry){t.carry.x=t.x-Math.cos(t.angle)*30;t.carry.y=t.y-Math.sin(t.angle)*30;t.carry.angle=t.angle;t.carry.vx=t.vx;t.carry.vy=t.vy;}
+  }
+  function update
