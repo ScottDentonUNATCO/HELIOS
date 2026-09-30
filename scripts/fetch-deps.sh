@@ -41,6 +41,10 @@ fetch "$MC/junit/junit/4.13.2/junit-4.13.2.jar" \
       "$DL/junit-4.13.2.jar"
 fetch "$MC/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar" \
       "$DL/hamcrest-core-1.3.jar"
+fetch "$MC/com/squareup/okhttp3/mockwebserver/4.12.0/mockwebserver-4.12.0.jar" \
+      "$DL/mockwebserver-4.12.0.jar"
+fetch "$MC/org/jetbrains/kotlinx/kotlinx-coroutines-test-jvm/1.9.0/kotlinx-coroutines-test-jvm-1.9.0.jar" \
+      "$DL/kotlinx-coroutines-test-jvm-1.9.0.jar"
 
 echo "==> AndroidX AARs (resolve_deps.py: BOM 2024.10.00 + pinned roots)"
 python3 "$AB/resolve_deps.py" --out "$AB/deps"

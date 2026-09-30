@@ -16,7 +16,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 KCE="$DL/kotlin-compiler-embeddable-2.0.21.jar"
 [ -f "$KCE" ] || { echo "FATAL: missing $KCE (run scripts/fetch-deps.sh)"; exit 1; }
-for j in junit-4.13.2 hamcrest-core-1.3; do
+for j in junit-4.13.2 hamcrest-core-1.3 mockwebserver-4.12.0 kotlinx-coroutines-test-jvm-1.9.0; do
   [ -f "$DL/$j.jar" ] || { echo "FATAL: missing $DL/$j.jar (run scripts/fetch-deps.sh)"; exit 1; }
 done
 [ -d "$AB/classes-gateway" ] || { echo "FATAL: run apk-build/compile-gateway.sh first"; exit 1; }
@@ -29,6 +29,7 @@ done
 
 TEST_CP="$AB/classes-gateway:$AB/classes-app"
 TEST_CP="$TEST_CP:$DL/junit-4.13.2.jar:$DL/hamcrest-core-1.3.jar"
+TEST_CP="$TEST_CP:$DL/mockwebserver-4.12.0.jar:$DL/kotlinx-coroutines-test-jvm-1.9.0.jar"
 TEST_CP="$TEST_CP:$KOTLIN_LIBS/kotlin-test.jar:$KOTLIN_LIBS/kotlin-stdlib.jar"
 for j in kotlinx-coroutines-core-jvm-1.9.0 kotlinx-serialization-core-jvm-1.7.3 \
          kotlinx-serialization-json-jvm-1.7.3 okhttp-4.12.0 okio-jvm-3.6.0; do
@@ -45,7 +46,8 @@ echo "   test files: $(echo "$TEST_SRCS" | wc -w)"
 cd "$ROOT"
 # shellcheck disable=SC2086
 java -cp "$KOTLINC_CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
-  -cp "$TEST_CP" $TEST_SRCS -d "$AB/classes-test" 2>&1 | tail -3
+  -cp "$TEST_CP" $TEST_SRCS -d "$AB/classes-test" 2>&1 | grep -E "error:|warning: unable" | head -20
+[ "${PIPESTATUS[0]}" -eq 0 ] || { echo "TEST COMPILE FAILED"; exit 1; }
 
 echo "== running tests"
 cd "$AB/classes-test"
