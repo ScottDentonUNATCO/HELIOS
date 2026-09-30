@@ -57,6 +57,13 @@ for key in "${!BEST[@]}"; do
   esac
   echo "$AB/extract/${key}__${BEST[$key]}/classes.jar" >> "$AB/dex-candidates.txt"
 done
+# AAR-bundled repackaged libs (e.g. emoji2 1.3.0's libs/repackaged.jar carries
+# the FlatBuffer runtime its own classes need at startup). d8 must see these
+# or the app dies with NoClassDefFoundError on launch (androidx.startup runs
+# EmojiCompatInitializer before anything else).
+for lj in "$AB"/extract/*/libs/*.jar; do
+  [ -f "$lj" ] && echo "$lj" >> "$AB/dex-candidates.txt"
+done
 # JVM libs
 for j in kotlinx-coroutines-core-jvm-1.9.0 kotlinx-serialization-core-jvm-1.7.3 \
          kotlinx-serialization-json-jvm-1.7.3 okhttp-4.12.0 okio-jvm-3.6.0; do
