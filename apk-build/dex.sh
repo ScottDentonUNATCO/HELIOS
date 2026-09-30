@@ -27,9 +27,14 @@ for d in classes-app classes-gateway classes-r; do
 done
 
 echo "== build dex input list (dedup by artifact, highest version wins)"
-INPUTS="$AB/dex-jars/classes-app.jar
+# Anchors: our own compiled jars — never dropped by dedupe.
+ANCHORS="$AB/dex-jars/classes-app.jar
 $AB/dex-jars/classes-gateway.jar
 $AB/dex-jars/classes-r.jar"
+# Candidates: every library jar. Anything fully shadowed by the rest
+# (stale absorbed artifacts like collection-ktx or lifecycle-viewmodel-ktx,
+# whose classes all live in the newer artifact now) is dropped.
+: > "$AB/dex-candidates.txt"
 # AAR classes jars, deduped: extract/<group>__<artifact>__<version>/classes.jar
 declare -A BEST
 for d in "$AB"/extract/*/; do
@@ -43,20 +48,26 @@ for d in "$AB"/extract/*/; do
   fi
 done
 for key in "${!BEST[@]}"; do
-  INPUTS="$INPUTS
-$AB/extract/${key}__${BEST[$key]}/classes.jar"
+  # Mirrors the original curated dex-inputs-v3.txt: lifecycle-viewmodel-ktx
+  # 2.6.1 is excluded — its ViewModelKt duplicates the 2.8.6 one, and its only
+  # other class (old-location CloseableCoroutineScope) is a benign metadata
+  # reference inside 2.8.6. The v8 APK shipped exactly this way.
+  case "$key" in
+    androidx.lifecycle__lifecycle-viewmodel-ktx) continue ;;
+  esac
+  echo "$AB/extract/${key}__${BEST[$key]}/classes.jar" >> "$AB/dex-candidates.txt"
 done
-# JVM libs (no version conflicts in this set)
+# JVM libs
 for j in kotlinx-coroutines-core-jvm-1.9.0 kotlinx-serialization-core-jvm-1.7.3 \
          kotlinx-serialization-json-jvm-1.7.3 okhttp-4.12.0 okio-jvm-3.6.0; do
-  INPUTS="$INPUTS
-$DL/$j.jar"
+  echo "$DL/$j.jar" >> "$AB/dex-candidates.txt"
 done
 # Plain-JAR deps (lifecycle-common etc.) — same set as the compile classpaths.
-while IFS= read -r j; do
-  INPUTS="$INPUTS
-$j"
-done < <(find "$AB/deps" -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | sort)
+find "$AB/deps" -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | sort >> "$AB/dex-candidates.txt"
+echo "$ANCHORS" | grep -v '^$' | sort > "$AB/dex-anchors.txt"
+DEDUPED="$(python3 "$AB/dedupe_dex_inputs.py" --anchors "$AB/dex-anchors.txt" --candidates "$AB/dex-candidates.txt")"
+INPUTS="$ANCHORS
+$DEDUPED"
 echo "$INPUTS" | grep -v '^$' | sort > "$AB/dex-inputs.txt"
 echo "  $(wc -l < "$AB/dex-inputs.txt") dex inputs"
 

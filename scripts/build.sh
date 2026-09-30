@@ -55,4 +55,4 @@ step "9/9 assemble + sign + verify"
 "$ROOT/apk-build/assemble.sh"
 
 echo
-echo "BUILD COMPLETE: $ROOT/apk-build/helios-v8-debug.apk"
+echo "BUILD COMPLETE: $ROOT/apk-build/helios-v9-debug.apk"

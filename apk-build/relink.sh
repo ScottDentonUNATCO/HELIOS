@@ -55,6 +55,7 @@ aapt2 link -o "$AB/omni-unsigned.apk" \
   -I "$AJAR" \
   --manifest "$MANIFEST" \
   --min-sdk-version 28 --target-sdk-version 36 \
+  --version-code 8 --version-name "0.8.0-helios" \
   -A "$ASSETS" \
   --java "$AB/gen-r" \
   "$FLATS"/*/*.flat

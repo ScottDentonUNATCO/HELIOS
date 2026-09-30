@@ -3,33 +3,47 @@
 # Assumes dex-out/classes*.dex (from dex.sh) and omni-unsigned.apk (from
 # relink.sh) are fresh. No Gradle. ROOT-relative.
 #
-# Signing: uses apk-build/debug.keystore if present; otherwise generates a
-# fresh debug key (keytool). For your own releases, drop in your keystore
-# and update KEYSTORE/aliases below — the debug key is NOT the v8 release key.
+# Signing: uses apk-build/debug.keystore if present (auto-detects its first
+# alias via keytool -list -v); otherwise generates a fresh debug key. Whoever
+# builds drops their own keystore here — keystores are gitignored, NEVER
+# committed. The v8-matching keystore lives at apk-build/debug.keystore with
+# alias androiddebugkey, so fresh builds install as upgrades over v8.
+# Env overrides: KEYSTORE, KEY_ALIAS, KEYSTORE_PASS, KEY_PASS.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AB="$ROOT/apk-build"
 TC="$ROOT/toolchain"
 BT="$TC/android-sdk/build-tools/36.0.0"
+AJAR="$TC/android-sdk/platforms/android-36/android.jar"
 
 export JAVA_HOME="$TC/jdk-17"
 export PATH="$JAVA_HOME/bin:$BT:$PATH"
 
 BASE_APK="$AB/omni-unsigned.apk"
 DEX_DIR="$AB/dex-out"
-KEYSTORE="$AB/debug.keystore"
-OUT_APK="$AB/helios-v8-debug.apk"
+
+KEYSTORE="${KEYSTORE:-$AB/debug.keystore}"
+KEYSTORE_PASS="${KEYSTORE_PASS:-android}"
+KEY_PASS="${KEY_PASS:-android}"
+OUT_APK="$AB/helios-v9-debug.apk"
 
 [ -f "$BASE_APK" ] || { echo "FATAL: missing $BASE_APK (run apk-build/relink.sh)"; exit 1; }
 
 if [ ! -f "$KEYSTORE" ]; then
-  echo "== generating fresh debug keystore (not the v8 release key)"
+  echo "== generating fresh debug keystore"
   keytool -genkeypair -keystore "$KEYSTORE" -alias helios-debug \
     -keyalg RSA -keysize 2048 -validity 10950 \
-    -storepass android -keypass android \
+    -storepass "$KEYSTORE_PASS" -keypass "$KEY_PASS" \
     -dname "CN=Helios Debug, OU=UNATCO, O=Helios, L=San Diego, C=US" 2>/dev/null
 fi
+
+if [ -z "${KEY_ALIAS:-}" ]; then
+  KEY_ALIAS="$(keytool -list -v -keystore "$KEYSTORE" -storepass "$KEYSTORE_PASS" 2>/dev/null \
+    | grep -i "Alias name:" | head -1 | sed 's/.*Alias name: //;s/ *$//')"
+  [ -n "$KEY_ALIAS" ] || { echo "FATAL: no alias found in $KEYSTORE"; exit 1; }
+fi
+echo "== signing with keystore alias: $KEY_ALIAS"
 
 echo "== step 1: insert dex into base APK"
 rm -f "$AB/omni-with-dex.apk"
@@ -46,7 +60,8 @@ zipalign -c -p 4 "$AB/omni-aligned.apk" && echo "  alignment check: OK"
 
 echo "== step 3: sign"
 rm -f "$OUT_APK"
-apksigner sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
+apksigner sign --ks "$KEYSTORE" --ks-pass "pass:$KEYSTORE_PASS" \
+  --ks-key-alias "$KEY_ALIAS" --key-pass "pass:$KEY_PASS" \
   --out "$OUT_APK" "$AB/omni-aligned.apk"
 echo "  signed -> $OUT_APK"
 
