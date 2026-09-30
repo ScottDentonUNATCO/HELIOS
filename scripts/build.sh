@@ -10,8 +10,9 @@
 #   4. relink.sh            aapt2 compile + link -> omni-unsigned.apk, R classes
 #   5. compile-gateway.sh   kotlinc gateway + registry -> classes-gateway
 #   6. compile-app.sh       kotlinc app (+compose plugin) -> classes-app
-#   7. dex.sh               d8 -> dex-out/classes*.dex
-#   8. assemble.sh          zipalign + sign + verify -> helios-v8-debug.apk
+#   7. run-tests.sh         compile + run all JVM unit tests (red fails build)
+#   8. dex.sh               d8 -> dex-out/classes*.dex
+#   9. assemble.sh          zipalign + sign + verify -> helios-v8-debug.apk
 #
 # Pass --skip-fetch to skip steps 1-3 when the toolchain/deps already exist.
 set -euo pipefail
@@ -23,31 +24,34 @@ SKIP_FETCH=0
 step() { echo; echo "########## $1 ##########"; }
 
 if [ "$SKIP_FETCH" = 0 ]; then
-  step "1/8 toolchain"
+  step "1/9 toolchain"
   "$ROOT/scripts/fetch-toolchain.sh"
 
-  step "2/8 launcher icons"
+  step "2/9 launcher icons"
   python3 "$ROOT/icon-work/make_icon.py"
 
-  step "3/8 dependencies"
+  step "3/9 dependencies"
   "$ROOT/scripts/fetch-deps.sh"
 else
   echo "(skipping fetch steps)"
 fi
 
-step "4/8 relink resources"
+step "4/9 relink resources"
 "$ROOT/apk-build/relink.sh"
 
-step "5/8 compile gateway"
+step "5/9 compile gateway"
 "$ROOT/apk-build/compile-gateway.sh"
 
-step "6/8 compile app"
+step "6/9 compile app"
 "$ROOT/apk-build/compile-app.sh"
 
-step "7/8 dex"
+step "7/9 unit tests"
+"$ROOT/apk-build/run-tests.sh"
+
+step "8/9 dex"
 "$ROOT/apk-build/dex.sh"
 
-step "8/8 assemble + sign + verify"
+step "9/9 assemble + sign + verify"
 "$ROOT/apk-build/assemble.sh"
 
 echo

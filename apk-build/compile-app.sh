@@ -44,7 +44,7 @@ java -cp "$KOTLINC_CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
   -Xplugin="$KCPLUGIN" \
   -cp "$APP_CP" \
   $(find "$ROOT/omni/app/src/main/java" "$ROOT/nes/src" "$ROOT/helios/registry/src" \
-      -name '*.kt' | sort | tr '\n' ' ') \
+      -name '*.kt' -not -path '*/src/test/*' -not -path '*/test/*' | sort | tr '\n' ' ') \
   -d "$AB/classes-app" 2>&1 | tee "$AB/kotlinc-app.log" | tail -5
 echo "== app classes: $(find "$AB/classes-app" -name '*.class' | wc -l)"
 echo "APP COMPILE COMPLETE"

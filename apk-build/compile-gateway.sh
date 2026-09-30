@@ -40,7 +40,8 @@ cd "$ROOT"
 java -cp "$KOTLINC_CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
   -Xplugin="$SERPLUGIN" \
   -cp "$GATEWAY_CP" \
-  $(find "$ROOT/omni/gateway" "$ROOT/helios/registry/src" -name '*.kt' | sort | tr '\n' ' ') \
+  $(find "$ROOT/omni/gateway" "$ROOT/helios/registry/src" -name '*.kt' \
+      -not -path '*/src/test/*' -not -path '*/test/*' | sort | tr '\n' ' ') \
   -d "$AB/classes-gateway" 2>&1 | tail -5
 echo "== gateway classes: $(find "$AB/classes-gateway" -name '*.class' | wc -l)"
 echo "GATEWAY COMPILE COMPLETE"

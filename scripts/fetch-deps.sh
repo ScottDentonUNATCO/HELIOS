@@ -36,6 +36,12 @@ fetch "$MC/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar" \
 fetch "$MC/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar" \
       "$DL/okio-jvm-3.6.0.jar"
 
+echo "==> Test libraries (JUnit 4)"
+fetch "$MC/junit/junit/4.13.2/junit-4.13.2.jar" \
+      "$DL/junit-4.13.2.jar"
+fetch "$MC/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar" \
+      "$DL/hamcrest-core-1.3.jar"
+
 echo "==> AndroidX AARs (resolve_deps.py: BOM 2024.10.00 + pinned roots)"
 python3 "$AB/resolve_deps.py" --out "$AB/deps"
 
