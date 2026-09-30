@@ -23,8 +23,9 @@ for j in kotlin-compiler kotlin-stdlib kotlinx-coroutines-core-jvm kotlin-reflec
   KOTLINC_CP="$KOTLINC_CP:$KOTLIN_LIBS/$j.jar"
 done
 
-# Gateway classpath: android.jar + AAR classes + jvm libs
-GATEWAY_CP="$AJAR"
+# Gateway classpath: android.jar + kotlin-stdlib (explicit: kotlin-home
+# auto-detection fails when the compiler runs via java -cp) + AAR classes + jvm libs
+GATEWAY_CP="$AJAR:$KOTLIN_LIBS/kotlin-stdlib.jar"
 for d in "$AB"/extract/*/; do
   [ -f "$d/classes.jar" ] && GATEWAY_CP="$GATEWAY_CP:$d/classes.jar"
 done

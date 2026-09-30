@@ -24,9 +24,11 @@ for j in kotlin-compiler kotlin-stdlib kotlinx-coroutines-core-jvm kotlin-reflec
   KOTLINC_CP="$KOTLINC_CP:$KOTLIN_LIBS/$j.jar"
 done
 
-# App classpath: android.jar + gateway classes + AAR classes + jvm libs.
+# App classpath: android.jar + kotlin-stdlib (explicit: kotlin-home
+# auto-detection fails when the compiler runs via java -cp)
+# + gateway classes + AAR classes + jvm libs.
 # Regenerated every run — never stale.
-APP_CP="$AJAR:$AB/classes-gateway"
+APP_CP="$AJAR:$KOTLIN_LIBS/kotlin-stdlib.jar:$AB/classes-gateway"
 for d in "$AB"/extract/*/; do
   [ -f "$d/classes.jar" ] && APP_CP="$APP_CP:$d/classes.jar"
 done
