@@ -33,6 +33,10 @@ for j in kotlinx-coroutines-core-jvm-1.9.0 kotlinx-serialization-core-jvm-1.7.3 
          kotlinx-serialization-json-jvm-1.7.3 okhttp-4.12.0 okio-jvm-3.6.0; do
   GATEWAY_CP="$GATEWAY_CP:$DL/$j.jar"
 done
+# Plain-JAR deps (lifecycle-common etc.) — the AAR extractor skips these.
+while IFS= read -r j; do
+  GATEWAY_CP="$GATEWAY_CP:$j"
+done < <(find "$AB/deps" -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | sort)
 
 echo "== kotlinc gateway + registry"
 rm -rf "$AB/classes-gateway"; mkdir -p "$AB/classes-gateway"

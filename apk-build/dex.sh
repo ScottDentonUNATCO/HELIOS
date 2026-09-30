@@ -52,6 +52,11 @@ for j in kotlinx-coroutines-core-jvm-1.9.0 kotlinx-serialization-core-jvm-1.7.3 
   INPUTS="$INPUTS
 $DL/$j.jar"
 done
+# Plain-JAR deps (lifecycle-common etc.) — same set as the compile classpaths.
+while IFS= read -r j; do
+  INPUTS="$INPUTS
+$j"
+done < <(find "$AB/deps" -name '*.jar' ! -name '*sources*' ! -name '*javadoc*' | sort)
 echo "$INPUTS" | grep -v '^$' | sort > "$AB/dex-inputs.txt"
 echo "  $(wc -l < "$AB/dex-inputs.txt") dex inputs"
 
