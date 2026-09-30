@@ -1,0 +1,22 @@
+(t);
+  const enterBtn=document.getElementById('enterBtn');enterBtn.addEventListener('pointerdown',e=>{e.preventDefault();ensureAudio();enterBtn.classList.add('pressed');if(!interactOnFoot())tryEnterVehicle();});for(const ev of ['pointerup','pointercancel','pointerleave'])enterBtn.addEventListener(ev,e=>{e.preventDefault();enterBtn.classList.remove('pressed');});
+  const walkFireBtn=document.getElementById('walkFireBtn');walkFireBtn.addEventListener('pointerdown',e=>{e.preventDefault();ensureAudio();keys.fire=true;walkFireBtn.classList.add('pressed');firePlayerPaintball();});for(const ev of ['pointerup','pointercancel','pointerleave'])walkFireBtn.addEventListener(ev,e=>{e.preventDefault();keys.fire=false;walkFireBtn.classList.remove('pressed');});
+  window.CHINASKAR_CAMERA={set:setRaceCamera,cycle:cycleCamera,list:()=>[...cameraModes],current:()=>cameraMode};
+  window.CHINASKAR_BODY={set:applyBodyEra,cycle:toggleBodyEra,current:()=>selectedBodyEra};
+})();
+</script>
+
+<!-- CHINASKAR v1 EASTER EGG overlay (Helios in-app, com.omni.app.gamemaker.easteregg) -->
+<style>
+#chinaskarV1Egg{position:fixed;top:8px;left:8px;z-index:99999;pointer-events:none;
+font-family:"Roboto Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.5px;
+color:#3be4d0;background:rgba(6,19,21,.78);border:1px solid #3be4d0;border-radius:6px;
+padding:6px 10px;text-shadow:none}
+#chinaskarV1EggClose{position:fixed;top:8px;right:8px;z-index:99999;width:38px;height:38px;
+font-family:ui-monospace,monospace;font-size:18px;color:#ffe047;background:rgba(6,19,21,.78);
+border:1px solid #ffe047;border-radius:8px;cursor:pointer}
+</style>
+<div id="chinaskarV1Egg">CHINASKAR v1 &mdash; the original top-down. Easter egg.</div>
+<button id="chinaskarV1EggClose" title="Close easter egg" onclick="window.ChinaskarBridge&&ChinaskarBridge.closeEgg()">&#10005;</button>
+</body>
+</html>
