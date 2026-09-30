@@ -1,0 +1,280 @@
+|c.towed||!projectInto(c.x,c.y,8,asciiProj)||asciiProj.depth>far)continue;const sz=clamp(asciiProj.q*18,7,25),alpha=clamp(1-asciiProj.depth/far*.72,.3,1),family=stockFamily(c.modelYear),eraBody=family==='aero70'?'<=>':family==='box80'?'[##]':family==='round90'?'(==)':'[=]',body=c.exploded?'[X]':c.rolled?'[//]':c.wrecked?'<#>':c.aiState==='overtake'?'>=>':eraBody;glyph(body,asciiProj.x,asciiProj.y,c.exploded?'#ff4a19':c.color,sz,alpha);if(asciiProj.depth<900){glyph('^',asciiProj.x,asciiProj.y-sz*.55,'#8ddaff',Math.max(7,sz*.62),alpha);glyph(String(c.num%100),asciiProj.x,asciiProj.y,'#fff6b5',Math.max(7,sz*.48),alpha);}}
+    for(const s of spareCars)if(!s.used)drawEntity(s,'[S]',s.color,8);
+    drawEntity(tow,'[T]','#ffe43b',11);
+    for(let i=0;i<debrisField.length;i+=2)drawEntity(debrisField[i],i%4?'*':'%','#ff7950',3);
+    for(let i=0;i<particles.length;i++){const q=particles[i];if(q.kind==='fire'||q.kind==='spark'||q.kind==='smoke')drawEntity(q,q.kind==='fire'?'@':q.kind==='spark'?'*':'~',q.kind==='fire'?'#ff6a19':q.kind==='spark'?'#fff35a':'#36c7a8',q.kind==='smoke'?26:12);}
+    ctx.globalAlpha=1;ctx.shadowBlur=0;
+    const hoodColor=activeMode==='tow'?'#ffe43b':activeMode==='walk'?'#59ff9a':selectedColor;glyph(activeMode==='walk'?'  _O_  ':' /=======\\ ',W*.5,H*.84,hoodColor,clamp(W/34,13,25),1);glyph(activeMode==='walk'?' / | \\ ':'| CHINASKAR |',W*.5,H*.9,hoodColor,clamp(W/40,12,21),1);glyph(activeMode==='walk'?'  / \\  ':' \\__||__// ',W*.5,H*.95,hoodColor,clamp(W/38,12,22),1);
+    glyph('ASCII CITY // BUILD-JS SECTORS // 60 HZ',W*.5,H-13,'#6dffd4',clamp(W/63,8,13),.92);ctx.globalAlpha=1;ctx.shadowBlur=0;drawFirstPersonHUD(true);
+  }
+  function drawCockpitView(){
+    const active=activeEntity(),baseNear=nearestPath(active.x,active.y),baseD=baseNear.d,far=2100,horizon=H*.29+cameraBob*.75;
+    const skin={nes:['#080e12','#17302c','#2b3031','#e1d2aa'],genesis:['#120e22','#342952','#343440','#d7ad60'],snes:['#102521','#315a49','#444c4d','#f0ddb1'],n64:['#0a1717','#425c50','#3b4141','#eee6d2'],ps1:['#11151b','#433d4e','#35383d','#c3b9a2']}[graphicsMode];
+    ctx.fillStyle=skin[0];ctx.fillRect(0,0,W,H);drawEraSky(horizon,skin);
+    // A real lunar body hangs beyond the grotto aperture while the city rings frame it.
+    const moonR=Math.min(W,H)*.115;ctx.fillStyle='#bbc4c3';ctx.beginPath();ctx.arc(W*.73,horizon*.5,moonR,0,TAU);ctx.fill();ctx.fillStyle='rgba(34,42,48,.25)';ctx.beginPath();ctx.arc(W*.7,horizon*.42,moonR*.18,0,TAU);ctx.arc(W*.77,horizon*.58,moonR*.12,0,TAU);ctx.fill();
+    ctx.strokeStyle=skin[3];ctx.lineWidth=graphicsMode==='nes'?8:5;for(let i=0;i<9;i++){const x=i*W/8;ctx.beginPath();ctx.moveTo(W/2,horizon+38);ctx.quadraticCurveTo(x,horizon*.18,x-W*.08,0);ctx.stroke();}
+    // Multi-tier seating with aisles and individually animated little spectators.
+    for(let side of [-1,1])for(let row=0;row<5;row++){const y=horizon+18+row*13;ctx.fillStyle=row%2?skin[1]:skin[3];ctx.fillRect(side<0?0:W*.72,y,W*.28,10);for(let i=0;i<18;i++){const x=side<0?i*W*.28/18:W*.72+i*W*.28/18,hop=Math.sin(raceTime*4+i+row)*1.5;ctx.strokeStyle='#111';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y+4+hop);ctx.lineTo(x-2,y+9);ctx.moveTo(x,y+4+hop);ctx.lineTo(x+2,y+9);ctx.stroke();ctx.fillStyle=palette[(i+row*3)%palette.length];ctx.fillRect(x-2,y+hop,4,5);}}
+    const proj=d=>{const p=pathAt(baseD+d),b=pathAt(baseD),across=(p.x-b.x)*b.nx+(p.y-b.y)*b.ny,zoom=W*(1-fovKick*.28)/(d+175),q=1-clamp(d/far,0,1);return {x:W/2-cameraYaw*W*.2+across*zoom*.72,y:horizon+q*q*(H-horizon+85),half:TRACK_W*.5*zoom};};
+    const slices=48;for(let i=slices-1;i>=0;i--){const d0=i*far/slices,d1=(i+1)*far/slices,a=proj(d0),b=proj(d1);ctx.fillStyle=i%2?skin[2]:(graphicsMode==='snes'?'#505759':'#292f31');ctx.beginPath();ctx.moveTo(a.x-a.half,a.y);ctx.lineTo(a.x+a.half,a.y);ctx.lineTo(b.x+b.half,b.y);ctx.lineTo(b.x-b.half,b.y);ctx.closePath();ctx.fill();const curb=Math.max(2,a.half*.07);ctx.fillStyle=i%2?'#e6dfc9':'#be3d38';ctx.beginPath();ctx.moveTo(a.x-a.half-curb,a.y);ctx.lineTo(a.x-a.half,a.y);ctx.lineTo(b.x-b.half,b.y);ctx.lineTo(b.x-b.half-curb*.35,b.y);ctx.fill();ctx.beginPath();ctx.moveTo(a.x+a.half,a.y);ctx.lineTo(a.x+a.half+curb,a.y);ctx.lineTo(b.x+b.half+curb*.35,b.y);ctx.lineTo(b.x+b.half,b.y);ctx.fill();if(i%4===0){ctx.strokeStyle='rgba(236,232,213,.5)';ctx.lineWidth=Math.max(1,curb*.18);ctx.beginPath();ctx.moveTo(a.x-a.half*.32,a.y);ctx.lineTo(b.x-b.half*.32,b.y);ctx.moveTo(a.x+a.half*.32,a.y);ctx.lineTo(b.x+b.half*.32,b.y);ctx.stroke();}}
+    // Pit row is an actual parallel service road with bays, crews and a protected divider.
+    ctx.fillStyle='#171b1d';ctx.beginPath();ctx.moveTo(0,H*.66);ctx.lineTo(W*.19,H*.62);ctx.lineTo(W*.32,horizon+38);ctx.lineTo(0,horizon+25);ctx.closePath();ctx.fill();ctx.strokeStyle=skin[3];ctx.lineWidth=3;ctx.stroke();for(let i=0;i<7;i++){const y=H*.64-i*35,x=12+i*7;ctx.fillStyle=i%2?'#d6493f':skin[3];ctx.fillRect(x,y,54-i*4,5);ctx.fillStyle=palette[i%palette.length];ctx.fillRect(x+8,y-10,9,8);}
+    const visible=[];for(const c of [...cars,...spareCars.filter(s=>!s.used)]){if(c.removed||c.towed)continue;const n=nearestAround(mod(c.d||nearestPath(c.x,c.y).d,L),c.x,c.y),ds=mod(n.d-baseD,L);if(ds>8&&ds<far)visible.push({o:c,n,ds});}visible.sort((a,b)=>b.ds-a.ds);
+    const cockpitStart=Math.max(0,visible.length-(mobileMode?[150,120,88,58][qualityTier]:visible.length));for(let vi=cockpitStart;vi<visible.length;vi++){const v=visible[vi],p=proj(v.ds),sc=clamp(410/(v.ds+180),.2,2.1),x=p.x+v.n.side*(W/(v.ds+175))*.72,y=p.y;ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);renderScale=sc;drawCar(0,0,-Math.PI/2,v.o.color,v.o.num,false,v.o.steer,v.o.damage,v.o.hit,v.o.modelYear,v.o.roll,v.o.rolled,Math.hypot(v.o.vx||0,v.o.vy||0),vi>=visible.length-qualityConfig().detailCars,v.o.paint,jiggleFor(v.o,vi>=visible.length-qualityConfig().detailCars));ctx.restore();}
+    // Sprite-like roadside actors keep their true world paths while always facing the 2.5D camera.
+    for(const d of drivers){if(d.taken)continue;const n=nearestPath(d.x,d.y),ds=mod(n.d-baseD,L);if(ds<10||ds>far*.72)continue;const p=proj(ds),sc=clamp(470/(ds+160),.25,1.6),x=p.x+n.side*(W/(ds+175))*.72,y=p.y;ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);if(d.bits){ctx.fillStyle=d.color;for(let b2=0;b2<5;b2++)ctx.fillRect(Math.sin(raceTime*8+b2*2.1)*9-2,Math.cos(raceTime*6.4+b2*1.7)*9-9,4,4);ctx.restore();continue;}ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,2);ctx.lineTo(-8,10);ctx.moveTo(-5,2);ctx.lineTo(5,8);ctx.moveTo(-3,-2);ctx.lineTo(-10,1);ctx.stroke();ctx.fillStyle=d.color;ctx.fillRect(-5,-8,9,12);ctx.fillStyle='#efb98e';ctx.beginPath();ctx.arc(0,-12,4,0,TAU);ctx.fill();if(d.ragdoll>0){ctx.fillStyle='#ffe65a';for(let s2=0;s2<3;s2++){const a2=raceTime*9+s2*TAU/3;ctx.fillRect(Math.cos(a2)*10-1.5,Math.sin(a2)*7-14,3,3);}}ctx.restore();}
+    for(const a of ambList()){const n=nearestPath(a.x,a.y),ds=mod(n.d-baseD,L);if(ds<12||ds>far*.8)continue;const p=proj(ds),sc=clamp(450/(ds+170),.22,1.45),x=p.x+n.side*(W/(ds+175))*.72,y=p.y;ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);ctx.fillStyle='#f4f0d9';ctx.fillRect(-17,-14,34,24);ctx.fillStyle='#ef4b42';ctx.fillRect(-4,-13,8,22);ctx.fillRect(-13,-6,26,8);ctx.fillStyle=Math.sin(a.flash*12)>0?'#ef4b42':'#19cad0';ctx.fillRect(-6,-18,12,4);ctx.restore();}
+    renderScale=1;const dashY=H*.79;ctx.fillStyle=activeMode==='tow'?'#c7a229':'#111719';ctx.beginPath();ctx.moveTo(0,H);ctx.lineTo(0,dashY);ctx.quadraticCurveTo(W/2,dashY-42,W,dashY);ctx.lineTo(W,H);ctx.fill();ctx.strokeStyle='#4c575a';ctx.lineWidth=5;ctx.stroke();ctx.strokeStyle=skin[3];ctx.lineWidth=8;ctx.beginPath();ctx.arc(W/2,H*.92,Math.min(W,H)*.115,Math.PI,TAU);ctx.stroke();ctx.fillStyle='#06090a';ctx.beginPath();ctx.arc(W/2,H*.92,20,0,TAU);ctx.fill();ctx.strokeStyle=selectedColor;ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(W*.31,H);ctx.lineTo(W*.41,H*.88);ctx.moveTo(W*.69,H);ctx.lineTo(W*.59,H*.88);ctx.stroke();
+    ctx.fillStyle=skin[3];ctx.font=`700 ${Math.max(9,Math.min(14,W/48))}px "Roboto Mono"`;ctx.textAlign='center';ctx.fillText(activeMode==='tow'?'FIXED 2.5D · TOW UNIT':activeMode==='walk'?'FIXED 2.5D · ON FOOT · IMMORTAL CITY':'FIXED 2.5D · '+eraFor(player.modelYear).name.toUpperCase()+' '+player.modelYear,W/2,H-12);
+    if(graphicsMode==='nes'||graphicsMode==='ps1'){ctx.globalAlpha=.13;ctx.fillStyle='#000';for(let y=0;y<H;y+=graphicsMode==='nes'?4:3)ctx.fillRect(0,y,W,1);ctx.globalAlpha=1;}
+  }
+  function drawCockpitOverlay(){
+    const active=activeEntity(),mph=clamp(Math.hypot(active.vx||0,active.vy||0)*.61,0,220),rpm=clamp(active.rpm||1000,0,9500),wheelAngle=clamp(active.steerInputRaw||0,-1,1)*Math.PI;
+    const shakeScale=Math.min(W,H)*1.15,sx=(cockpitRig.noiseX+cockpitRig.springX)*shakeScale,sy=(cockpitRig.noiseY+cockpitRig.springY)*shakeScale;
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(cockpitRig.roll);
+    // Windshield pillars: only the outer seven percent, leaving the central road window untouched.
+    ctx.fillStyle='#090d0f';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(W*.07,0);ctx.lineTo(W*.055,H*.75);ctx.lineTo(0,H*.82);ctx.closePath();ctx.fill();ctx.beginPath();ctx.moveTo(W*.93,0);ctx.lineTo(W,0);ctx.lineTo(W,H*.82);ctx.lineTo(W*.945,H*.75);ctx.closePath();ctx.fill();
+    // Full-width dash lives entirely in the bottom fifth of the screen.
+    const dashY=H*.8;ctx.fillStyle='#111719';ctx.fillRect(0,dashY,W,H-dashY);ctx.fillStyle='#283236';ctx.fillRect(0,dashY,W,8);ctx.fillStyle=activeMode==='tow'?'#c8a42a':selectedColor;ctx.fillRect(W*.39,dashY+5,W*.22,5);
+    const r=Math.min(W,H)*.072,gy=dashY+H*.105,leftX=W*.25,rightX=W*.75;
+    for(const [x,label] of [[leftX,'MPH'],[rightX,'RPM']]){ctx.fillStyle='#070a0b';ctx.beginPath();ctx.arc(x,gy,r,0,TAU);ctx.fill();ctx.strokeStyle='#c9d3d0';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='#c9d3d0';ctx.font=`700 ${Math.max(8,r*.2)}px "Roboto Mono"`;ctx.textAlign='center';ctx.fillText(label,x,gy+r*.5);}
+    const needle=(x,value,max)=>{const a=(-120+(value/max)*240)*Math.PI/180;ctx.save();ctx.translate(x,gy);ctx.rotate(a);ctx.fillStyle='#f4473c';ctx.fillRect(-2,-2,r*.82,4);ctx.restore();ctx.fillStyle='#f7f3df';ctx.beginPath();ctx.arc(x,gy,4,0,TAU);ctx.fill();};needle(leftX,mph,220);needle(rightX,rpm,9500);
+    ctx.fillStyle=rpm>=8800&&physicsTick%8<4?'#ff3b2f':'#081113';ctx.fillRect(W*.45,dashY+10,W*.1,10);ctx.fillStyle='#76eff2';ctx.font=`700 ${Math.max(15,Math.min(28,W*.035))}px "Roboto Mono"`;ctx.textAlign='center';ctx.fillText(String(Math.round(mph)).padStart(3,'0'),W*.5,gy+7);
+    // 0.19 m steering wheel and short column shroud, rotating ±180° from raw physics input.
+    const wr=Math.min(W,H)*.105,wcx=W*.5,wcy=H*.91;ctx.fillStyle='#20282b';ctx.beginPath();ctx.moveTo(wcx-22,H);ctx.lineTo(wcx-13,wcy+4);ctx.lineTo(wcx+13,wcy+4);ctx.lineTo(wcx+22,H);ctx.fill();ctx.save();ctx.translate(wcx,wcy);ctx.rotate(wheelAngle);ctx.strokeStyle='#07090a';ctx.lineWidth=Math.max(9,wr*.13);ctx.beginPath();ctx.arc(0,0,wr,0,TAU);ctx.stroke();ctx.lineWidth=Math.max(5,wr*.07);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-wr*.86);ctx.moveTo(0,0);ctx.lineTo(-wr*.74,wr*.48);ctx.moveTo(0,0);ctx.lineTo(wr*.74,wr*.48);ctx.stroke();ctx.fillStyle='#303a3e';ctx.beginPath();ctx.arc(0,0,wr*.23,0,TAU);ctx.fill();ctx.restore();ctx.restore();
+  }
+  function drawOrbit3DView(){
+    const active=activeEntity(),carHeading=(active.dir??active.angle??0),speed=Math.hypot(active.vx||0,active.vy||0),enginePitch=Math.sin(cameraBobPhase*.53)*clamp(speed/250,0,.7),camLift=cameraBob*1.15+enginePitch*2.2;
+    let cam;
+    if(activeMode==='walk'||activeMode==='fan'){
+      const heading=carHeading+cameraYaw;cam={x:active.x,y:active.y,z:7.2,yaw:heading,focal:Math.max(390,W*.82)*cameraZoom,horizon:H*(.31+cameraPitch*.22)+camLift};
+    }else if(cameraMode==='cockpit'){
+      const heading=carHeading+cameraYaw,fx=Math.cos(carHeading),fy=Math.sin(carHeading),lx=-fy,ly=fx;cam={x:active.x+fx*5.4+lx*1.52,y:active.y+fy*5.4+ly*1.52,z:4.6,yaw:heading,focal:Math.max(390,W*.82),horizon:H*(.29+cameraPitch*.18)};
+    }else if(cameraMode==='chase'){
+      cam={x:chaseRig.x,y:chaseRig.y,z:Math.max(4.8,12+chaseRig.spring),yaw:chaseRig.yaw,focal:W/(2*Math.tan(35*Math.PI/180)),horizon:H*.28};
+    }else if(cameraMode==='helicopter'){
+      cam={x:helicopterRig.x,y:helicopterRig.y,z:112,yaw:helicopterRig.yaw+cameraYaw*.35,focal:Math.max(270,W*.48)/cameraZoom,horizon:H*(.13+cameraPitch*.12)};
+    }else if(cameraMode==='orbit'){
+      const a=carHeading+raceTime*.42+cameraYaw,dist=92*cameraZoom;cam={x:active.x-Math.cos(a)*dist,y:active.y-Math.sin(a)*dist,z:76,yaw:Math.atan2(active.y-(active.y-Math.sin(a)*dist),active.x-(active.x-Math.cos(a)*dist)),focal:Math.max(380,W*.72),horizon:H*(.2+cameraPitch*.18)};
+    }else if(cameraMode==='blimp'||(cameraMode==='trackside'&&tracksideAuto&&tracksideSpot===5)){
+      const drift=raceTime*.055,a=carHeading+.55+Math.sin(drift)*.22,dist=330;const x=active.x-Math.cos(a)*dist+Math.sin(drift*.7)*36,y=active.y-Math.sin(a)*dist+Math.cos(drift*.63)*28;cam={x,y,z:250+Math.sin(drift*.8)*12,yaw:Math.atan2(active.y-y,active.x-x),focal:Math.max(340,W*.56),horizon:H*.14};
+    }else if(cameraMode==='trackside'){
+      const spotDs=[0,L*.18,L*.38,L*.58,L*.78],spotSides=[.62,-.62,.76,-.76,.64],p=facilityPoint(spotDs[tracksideSpot%5],spotSides[tracksideSpot%5]),tx=active.x,ty=active.y;cam={x:p.x,y:p.y,z:(tracksideSpot===2||tracksideSpot===3)?86:38,yaw:Math.atan2(ty-p.y,tx-p.x),focal:Math.max(390,W*.76),horizon:H*.28};
+    }else{
+      const heading=carHeading+cameraYaw,dist=118*cameraZoom;cam={x:active.x-Math.cos(heading)*dist,y:active.y-Math.sin(heading)*dist,z:70+cameraPitch*90,yaw:Math.atan2(active.y-(active.y-Math.sin(heading)*dist),active.x-(active.x-Math.cos(heading)*dist)),focal:Math.max(380,W*.72),horizon:H*.22};
+    }
+    const heading=cam.yaw,cs=Math.cos(heading),sn=Math.sin(heading);
+    const skin={nes:['#07110f','#263d37','#e8d197','#343a3b','#d34b40'],genesis:['#0e0a20','#392b52','#dca35a','#393642','#e1435a'],snes:['#09221d','#315b4c','#f0dda8','#444c4d','#dc5a4e'],n64:['#071413','#3f5a50','#eee6d0','#3b4241','#a43b35'],ps1:['#11131a','#403a49','#c7bba0','#35383d','#a83b43']}[graphicsMode];
+    const project=(x,y,z=0)=>{
+      const dx=x-cam.x,dy=y-cam.y,forward=dx*cs+dy*sn,lateral=-dx*sn+dy*cs;
+      if(forward<10)return null;const q=cam.focal/forward;
+      return {x:W*.5+lateral*q,y:cam.horizon+(cam.z-z)*q,q,depth:forward};
+    };
+    // Road ribbon uses near-plane CLIPPING in camera space (Sutherland-Hodgman
+    // against forward>=0.5) -- not clamping, and not drop-on-any-corner-behind.
+    // The ribbon is a full track wide, so on curves a far corner can swing
+    // behind the near plane even though the quad's middle (under the subject
+    // car) is well in front: dropping the whole quad leaves a black hole
+    // under the car, and clamping forward to 10 turns behind-camera slices
+    // into enormous polygons (q=focal/10) that painter's-order draws last,
+    // painting flat wall colors over the whole windshield in cockpit view.
+    // Clipping keeps only the truly visible portion: fully-in-front quads
+    // project bit-identical to the old code, behind-camera quads are dropped,
+    // straddling quads keep their visible part.
+    const roadCS=(x,y,z=0)=>{
+      const dx=x-cam.x,dy=y-cam.y;
+      return {f:dx*cs+dy*sn,l:-dx*sn+dy*cs,z};
+    };
+    const roadProj=p=>{const q=cam.focal/p.f;return {x:W*.5+p.l*q,y:cam.horizon+(cam.z-p.z)*q,q,depth:p.f};};
+    const clipNearPoly=pts=>{
+      const out=[];
+      for(let i=0;i<pts.length;i++){
+        const a=pts[i],b=pts[(i+1)%pts.length],ain=a.f>=0.5,bin=b.f>=0.5;
+        if(ain)out.push(a);
+        if(ain!==bin){const t=(0.5-a.f)/(b.f-a.f);out.push({f:0.5,l:a.l+(b.l-a.l)*t,z:a.z+(b.z-a.z)*t});}
+      }
+      return out.length>=3?out:null;
+    };
+    const roadPoly=(corners,fill)=>{ // corners: [{x,y,z}] world
+      const cl=clipNearPoly(corners.map(c=>roadCS(c.x,c.y,c.z||0)));
+      if(!cl)return;
+      poly(cl.map(roadProj),fill);
+    };
+    const roadSeg=(a,b)=>{ // world {x,y,z}; returns [pa,pb] projected, or null
+      const A=roadCS(a.x,a.y,a.z||0),B=roadCS(b.x,b.y,b.z||0),ain=A.f>=0.5,bin=B.f>=0.5;
+      if(!ain&&!bin)return null;
+      if(ain&&bin)return [roadProj(A),roadProj(B)];
+      const t=(0.5-A.f)/(B.f-A.f),X={f:0.5,l:A.l+(B.l-A.l)*t,z:A.z+(B.z-A.z)*t};
+      return ain?[roadProj(A),roadProj(X)]:[roadProj(X),roadProj(B)];
+    };
+    const poly=(pts,fill,stroke=null)=>{if(pts.some(p=>!p))return;ctx.fillStyle=fill;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);ctx.closePath();ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke();}};
+    ctx.fillStyle=skin[0];ctx.fillRect(0,0,W,H);drawEraSky(cam.horizon,skin);ctx.fillStyle='#050708';ctx.fillRect(0,cam.horizon+70,W,H-cam.horizon-70);
+    // Multi-plane parallax skyline: yaw moves each jagged silhouette at a different rate, like a Build sky texture.
+    for(let layer=0;layer<3;layer++){const base=cam.horizon+10-layer*17,shift=mod(cameraYaw*(90+layer*58),82),step=42-layer*7;ctx.fillStyle=layer===0?'#071514':layer===1?'#112421':'#1d332d';ctx.beginPath();ctx.moveTo(0,base);for(let x=-step-shift;x<W+step;x+=step){const peak=22+((Math.floor((x+shift)/step)*17+layer*13)%31);ctx.lineTo(x,base);ctx.lineTo(x+step*.45,base-peak);ctx.lineTo(x+step,base);}ctx.lineTo(W,cam.horizon+80);ctx.lineTo(0,cam.horizon+80);ctx.fill();}
+    const moonR=Math.min(W,H)*(selectedTrack==='moon'?.16:.1),moonX=mod(W*.78-cameraYaw*165+W*.2,W*1.4)-W*.2;ctx.fillStyle=selectedTrack==='moon'?'#477fc7':'#b9c3c3';ctx.beginPath();ctx.arc(moonX,H*.105,moonR,0,TAU);ctx.fill();ctx.fillStyle='rgba(28,34,40,.24)';ctx.beginPath();ctx.arc(moonX-moonR*.28,H*.09,moonR*.19,0,TAU);ctx.arc(moonX+moonR*.3,H*.13,moonR*.12,0,TAU);ctx.fill();
+    // Ceiling ribs and lamps establish a fixed 3D chamber rather than a flat horizon card.
+    for(let i=18;i>=1;i--){const d=i*180,p=pathAt(nearestPath(active.x,active.y).d+d);for(const side of [-1,1]){const x=p.x+p.nx*TRACK_W*.72*side,y=p.y+p.ny*TRACK_W*.72*side,a=project(x,y,145),b=project(x,y,0);if(a&&b){ctx.strokeStyle=skin[2];ctx.globalAlpha=.2+.5*(1-i/19);ctx.lineWidth=Math.max(1,7*a.q);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.globalAlpha=1;}}}
+    // Road ribbon anchor: fixed trackside cameras see the asphalt around their own
+    // concrete pad (the subject car may be a quarter-track away); all the
+    // follow cameras (chase/cockpit/orbit/blimp/free) anchor on the subject
+    // car itself, which is always on the racing surface, so a tight paperclip
+    // can't snap the ribbon to the opposite straight when the camera cuts
+    // across the infield.
+    const baseD=cameraMode==='trackside'?nearestPath(cam.x,cam.y).d:nearestPath(active.x,active.y).d,far=3600,near=520,slices=selectedCars===420?58:82;
+    // Non-uniform road slices: packed tight around the camera (d=0) so the
+    // near-plane cull in project() (a quad is dropped when ANY corner is
+    // behind forward<10) can only ever swallow a tiny sliver under the lens,
+    // even when the chase camera's wall-avoidance pulls it in to 14u;
+    // sparse far away where perspective compresses everything anyway.
+    const _u0=near/(far+near);
+    const roadD=u=>{if(u<_u0){const t=u/_u0;return -near*(1-t)*(1-t);}const t=(u-_u0)/(1-_u0);return far*t*t;};
+    // City towers are true projected prisms placed along the racing surface.
+    for(let i=34;i>=0;i--){const d=220+i*100,p=pathAt(baseD+d),side=i%2?1:-1,offset=TRACK_W*.68+115+(i%5)*72,cx=p.x+p.nx*offset*side,cy=p.y+p.ny*offset*side,h=80+(i%7)*22,w=44+(i%4)*9,l=54;
+      const f=p, n={x:p.nx,y:p.ny};const corners=[
+        {x:cx-f.tx*l/2-n.x*w/2,y:cy-f.ty*l/2-n.y*w/2},{x:cx+f.tx*l/2-n.x*w/2,y:cy+f.ty*l/2-n.y*w/2},
+        {x:cx+f.tx*l/2+n.x*w/2,y:cy+f.ty*l/2+n.y*w/2},{x:cx-f.tx*l/2+n.x*w/2,y:cy-f.ty*l/2+n.y*w/2}
+      ];const lo=corners.map(v=>project(v.x,v.y,0)),hi=corners.map(v=>project(v.x,v.y,h));
+      poly([lo[0],lo[1],hi[1],hi[0]],i%2?skin[1]:'#273b37');poly([lo[1],lo[2],hi[2],hi[1]],'#1c2928');poly(hi,skin[2]);
+      if(hi[0]&&hi[1]){ctx.strokeStyle='#78e4c2';ctx.globalAlpha=.55;ctx.lineWidth=Math.max(1,hi[0].q*3);ctx.beginPath();ctx.moveTo(hi[0].x,hi[0].y+6*hi[0].q);ctx.lineTo(hi[1].x,hi[1].y+6*hi[1].q);ctx.stroke();ctx.globalAlpha=1;}
+    }
+    // Curved world-space road ribbon. Each quad is projected from the same route used by physics.
+    // The ribbon starts BEHIND the active car (not 60u ahead of it): the road
+    // under and around the subject has to be drawn for chase / cockpit /
+    // trackside / orbit / blimp / free, or cars float on the clear color.
+    // Near-plane culling inside project() drops quads behind the camera.
+    for(let i=slices-1;i>=0;i--){const d0=roadD(i/slices),d1=roadD((i+1)/slices);const p0=pathAt(baseD+d0),p1=pathAt(baseD+d1);
+      const shoulder=TRACK_W*.54,road=TRACK_W*.5;
+      if(!(cameraMode==='cockpit'&&d1<60))roadPoly([{x:p0.x-p0.nx*shoulder,y:p0.y-p0.ny*shoulder,z:0},{x:p0.x+p0.nx*shoulder,y:p0.y+p0.ny*shoulder,z:0},{x:p1.x+p1.nx*shoulder,y:p1.y+p1.ny*shoulder,z:0},{x:p1.x-p1.nx*shoulder,y:p1.y-p1.ny*shoulder,z:0}],i%2?skin[2]:skin[4]);
+      roadPoly([{x:p0.x-p0.nx*road,y:p0.y-p0.ny*road,z:0},{x:p0.x+p0.nx*road,y:p0.y+p0.ny*road,z:0},{x:p1.x+p1.nx*road,y:p1.y+p1.ny*road,z:0},{x:p1.x-p1.nx*road,y:p1.y-p1.ny*road,z:0}],(cameraMode==='cockpit'&&d1<60)?(i%2?'#565e60':'#454c4e'):(i%2?skin[3]:'#2b3031'));
+      if(i%4<2)for(const lane of [-.32,0,.32]){const seg=roadSeg({x:p0.x+p0.nx*TRACK_W*lane,y:p0.y+p0.ny*TRACK_W*lane,z:.18},{x:p1.x+p1.nx*TRACK_W*lane,y:p1.y+p1.ny*TRACK_W*lane,z:.18});if(seg){const a=seg[0],b=seg[1];ctx.strokeStyle='rgba(242,238,216,.62)';ctx.lineWidth=Math.max(1,a.q*2);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}}
+      for(const side of [-1,1]){roadPoly([{x:p0.x+p0.nx*road*side,y:p0.y+p0.ny*road*side,z:0},{x:p1.x+p1.nx*road*side,y:p1.y+p1.ny*road*side,z:0},{x:p1.x+p1.nx*road*side,y:p1.y+p1.ny*road*side,z:11},{x:p0.x+p0.nx*road*side,y:p0.y+p0.ny*road*side,z:11}],side>0?'#8f332f':'#d2c49f');}
+    }
+    // Low-resolution ordered dither and hard pools of sector light keep the software-rendered contrast.
+    ctx.globalAlpha=.12;ctx.fillStyle='#b8f4d8';for(let y=Math.floor(cam.horizon);y<H;y+=6)for(let x=(y%12);x<W;x+=12)if(((x+y+physicsTick)>>2)%3===0)ctx.fillRect(x,y,2,2);ctx.globalAlpha=1;
+    for(let i=8;i>0;i--){const p=pathAt(baseD+i*310),lamp=project(p.x+p.nx*(i%2?TRACK_W*.44:-TRACK_W*.44),p.y+p.ny*(i%2?TRACK_W*.44:-TRACK_W*.44),34);if(!lamp)continue;const r=clamp(lamp.q*44,5,34);ctx.fillStyle=i%2?'rgba(255,210,92,.16)':'rgba(71,255,210,.14)';ctx.beginPath();ctx.arc(lamp.x,lamp.y,r,0,TAU);ctx.fill();ctx.fillStyle=i%2?'#ffe05a':'#4fffd1';ctx.fillRect(Math.round(lamp.x-r*.12),Math.round(lamp.y-r*.12),Math.max(2,r*.24),Math.max(2,r*.24));}
+    // ================= Voxel stock-car models =================
+    // "Minecraft it up": chunky block-built stock cars for the Duke/Build 3D
+    // views. Each family is a list of 1-unit cuboid parts (body panels, tires,
+    // hubs, spoiler/wing, bumpers, window blocks, number plates, ...). Parts
+    // are pre-rendered ONCE per (family, damage, angle, color, wheel-spin, hit)
+    // into cached sprite frames -- classic Build-engine billboards -- so the
+    // per-frame cost per car is one drawImage. LOD by distance: far cars use
+    // spin=0 frames and skip number digits; the LRU cache is pooled/recycled.
+    // Toggle: window.CHINASKAR_OPTS.voxelCars (boolean, default true when
+    // absent; registry owned by the options worker). Off = classic vector body.
+    function voxelCarsOn(){const o=window.CHINASKAR_OPTS;return !o||o.voxelCars!==false;}
+    const VOX_UX=4,VOX_UY=5,VOX_ANGLES=8,VOX_PAD=8,VOX_TILT=.30;
+    const VOX_COS=Math.cos(VOX_TILT),VOX_SIN=Math.sin(VOX_TILT);
+    const voxelSpriteCache=new Map();
+    let voxelCacheMax=700,voxelBakesLeft=6,voxelBudgetFrame=-1;
+    const VP=(x0,x1,y0,y1,z0,z1,role,tag)=>({x0,x1,y0,y1,z0,z1,role,tag:tag||''});
+    function voxWheelSet(P,x0,x1,yA,yB,spin,lug){
+      P.push(VP(x0,x1,yA,yB,0,3,'tire','wheel'));
+      const yo=yA>0?yB-1:yA,s='hubDark';
+      P.push(VP(x0+1,x1-1,yo,yo+1,1,2,'hub','wheel'));
+      if(spin===0)P.push(VP(x0+1,x0+2,yo,yo+1,0,3,s,'wheel'));
+      else if(spin===1)P.push(VP(x0,x1,yo,yo+1,1,2,s,'wheel'));
+      else if(spin===2)P.push(VP(x0,x0+1,yo,yo+1,0,1,s,'wheel'),VP(x0+1,x0+2,yo,yo+1,1,2,s,'wheel'),VP(x0+2,x0+3,yo,yo+1,2,3,s,'wheel'));
+      else P.push(VP(x0,x0+1,yo,yo+1,2,3,s,'wheel'),VP(x0+1,x0+2,yo,yo+1,1,2,s,'wheel'),VP(x0+2,x0+3,yo,yo+1,0,1,s,'wheel'));
+      if(lug)P.push(VP(x0+1,x0+2,yo,yo+1,1,2,'chrome','wheel'));
+    }
+    function voxBaseParts(family,spin){
+      const eraFamily=family;if(family==='aero70'||family==='round90')family='gen4';else if(family==='box80')family='cot';
+      const P=[],W=(x0,x1,yA,yB)=>voxWheelSet(P,x0,x1,yA,yB,spin,family==='next');
+      if(family==='gen4'){
+        // Tall greenhouse, rounded stepped nose, small blade spoiler.
+        P.push(VP(-11,11,-5,5,0,2,'paintDark','chassis'),VP(-11,11,-5,5,2,5,'paint','body'),
+        VP(5,11,-4,4,5,6,'paint','hood'),VP(10,13,-4,4,3,5,'paint','nose'),VP(12,13,-3,3,2,3,'paint','nose'),
+        VP(10,13,-6,6,0,1,'dark','splitter'),VP(12,13,-5,5,1,2,'dark','fBumper'),VP(12,13,-2,2,2,3,'dark','nose'),
+        VP(11,12,3,5,3,4,'headlight','nose'),VP(11,12,-5,-3,3,4,'headlight','nose'),
+        VP(6,10,4,6,3,5,'paint','fendF'),VP(6,10,-6,-4,3,5,'paint','fendFL'),
+        VP(-11,-6,4,6,3,5,'paint','fendR'),VP(-11,-6,-6,-4,3,5,'paint','fendR'),
+        VP(-6,3,-4,4,5,8,'paint','cabin'),VP(3,4,-3,3,5,8,'glass','glass'),VP(3,4,-3,3,7,8,'glassHi','glass'),
+        VP(-5,2,4,5,6,7,'glass','glass'),VP(-5,2,-5,-4,6,7,'glass','glass'),VP(-6,-5,-3,3,6,8,'glass','glass'),
+        VP(-6,3,-4,4,8,9,'paint','roof'),VP(-4,0,-2,2,9,10,'plate','roofplate'),
+        VP(-3,3,5,6,2,5,'plate','plateL'),VP(-3,3,-6,-5,2,5,'plate','plateR'),
+        VP(-11,-6,-4,4,5,6,'paint','deck'),VP(-12,-11,-5,5,2,4,'dark','tail'),
+        VP(-12,-11,2,4,3,4,'red','tail'),VP(-12,-11,-4,-2,3,4,'red','tail'),
+        VP(-12,-11,-5,5,1,2,'dark','rBumper'),VP(-12,-11,-5,5,6,7,'paint','spoiler'),
+        VP(-12,-11,3,4,5,6,'dark','spoiler'),VP(-12,-11,-4,-3,5,6,'dark','spoiler'),
+        VP(-12,-11,1,2,0,1,'chrome','exh'),VP(-12,-11,-2,-1,0,1,'chrome','exh'),
+        VP(2,3,4,5,6,7,'paint','mirror'),VP(2,3,-5,-4,6,7,'paint','mirror'),
+        VP(-5,-4,0,1,8,10,'dark','antenna'),VP(-6,6,5,6,0,2,'dark','skirt'),VP(-6,6,-6,-5,0,2,'dark','skirt'));
+        W(7,10,3,6);W(7,10,-6,-3);W(-10,-7,3,6);W(-10,-7,-6,-3);
+      }else if(family==='cot'){
+        // Boxy body, high rear deck, big rear wing on pedestals.
+        P.push(VP(-11,11,-5,5,0,2,'paintDark','chassis'),VP(-11,11,-5,5,2,6,'paint','body'),
+        VP(5,11,-4,4,6,7,'paint','hood'),VP(10,13,-4,4,4,6,'paint','nose'),VP(11,13,-4,4,2,4,'paint','nose'),
+        VP(10,13,-6,6,0,1,'dark','splitter'),VP(12,13,-5,5,1,3,'dark','fBumper'),VP(12,13,-3,3,3,4,'dark','nose'),
+        VP(11,12,3,5,4,5,'headlight','nose'),VP(11,12,-5,-3,4,5,'headlight','nose'),
+        VP(6,10,4,6,3,6,'paint','fendF'),VP(6,10,-6,-4,3,6,'paint','fendFL'),
+        VP(-11,-6,4,6,3,6,'paint','fendR'),VP(-11,-6,-6,-4,3,6,'paint','fendR'),
+        VP(-5,3,-4,4,6,8,'paint','cabin'),VP(3,4,-3,3,6,8,'glass','glass'),
+        VP(-4,2,4,5,6,8,'glass','glass'),VP(-4,2,-5,-4,6,8,'glass','glass'),VP(-5,-4,-3,3,6,8,'glass','glass'),
+        VP(-5,3,-4,4,8,9,'paint','roof'),VP(-3,1,-2,2,9,10,'plate','roofplate'),
+        VP(-2,4,5,6,2,5,'plate','plateL'),VP(-2,4,-6,-5,2,5,'plate','plateR'),
+        VP(-11,-5,-4,4,6,8,'paint','deck'),
+        VP(-13,-12,-6,6,8,9,'dark','wing'),VP(-13,-12,3,4,6,8,'dark','wing'),VP(-13,-12,-4,-3,6,8,'dark','wing'),
+        VP(-13,-12,5,6,7,10,'paint','wing'),VP(-13,-12,-6,-5,7,10,'paint','wing'),
+        VP(-12,-11,-5,5,3,5,'dark','tail'),VP(-12,-11,2,4,4,5,'red','tail'),VP(-12,-11,-4,-2,4,5,'red','tail'),
+        VP(-12,-11,-5,5,1,3,'dark','rBumper'),
+        VP(-12,-11,1,2,1,2,'chrome','exh'),VP(-12,-11,-2,-1,1,2,'chrome','exh'),
+        VP(2,3,4,5,7,8,'paint','mirror'),VP(2,3,-5,-4,7,8,'paint','mirror'),
+        VP(-4,-3,0,1,8,10,'dark','antenna'),VP(-6,6,5,6,0,2,'dark','skirt'),VP(-6,6,-6,-5,0,2,'dark','skirt'));
+        W(7,10,3,6);W(7,10,-6,-3);W(-10,-7,3,6);W(-10,-7,-6,-3);
+      }else if(family==='gen6'){
+        // Low sleek nose, sloped decklid, low blade spoiler.
+        P.push(VP(-11,11,-5,5,0,2,'paintDark','chassis'),VP(-11,11,-5,5,2,5,'paint','body'),
+        VP(5,11,-4,4,4,5,'paint','hood'),VP(11,13,-3,3,2,4,'paint','nose'),VP(12,13,-2,2,2,3,'paint','nose'),
+        VP(11,13,-5,5,0,1,'dark','splitter'),VP(12,13,-4,4,1,2,'dark','fBumper'),VP(12,13,-2,2,2,3,'dark','nose'),
+        VP(10,12,3,4,3,4,'headlight','nose'),VP(10,12,-4,-3,3,4,'headlight','nose'),
+        VP(6,10,4,6,3,5,'paint','fendF'),VP(6,10,-6,-4,3,5,'paint','fendFL'),
+        VP(-11,-6,4,6,3,5,'paint','fendR'),VP(-11,-6,-6,-4,3,5,'paint','fendR'),
+        VP(-6,3,-4,4,5,7,'paint','cabin'),VP(3,4,-3,3,5,7,'glass','glass'),VP(3,4,-3,3,6,7,'glassHi','glass'),
+        VP(-5,2,4,5,5,7,'glass','glass'),VP(-5,2,-5,-4,5,7,'glass','glass'),VP(-6,-5,-3,3,5,7,'glass','glass'),
+        VP(-6,3,-4,4,7,8,'paint','roof'),VP(-4,0,-2,2,8,9,'plate','roofplate'),
+        VP(-3,3,5,6,2,5,'plate','plateL'),VP(-3,3,-6,-5,2,5,'plate','plateR'),
+        VP(-11,-8,-4,4,5,6,'paint','deck'),VP(-8,-6,-4,4,4,5,'paint','deck'),
+        VP(-12,-11,-5,5,5,6,'paint','spoiler'),VP(-12,-11,3,4,4,5,'dark','spoiler'),VP(-12,-11,-4,-3,4,5,'dark','spoiler'),
+        VP(-12,-11,-5,5,2,4,'dark','tail'),VP(-12,-11,2,4,3,4,'red','tail'),VP(-12,-11,-4,-2,3,4,'red','tail'),
+        VP(-12,-11,-5,5,1,2,'dark','rBumper'),
+        VP(-12,-11,1,2,0,1,'chrome','exh'),VP(-12,-11,-2,-1,0,1,'chrome','exh'),
+        VP(2,3,4,5,6,7,'paint','mirror'),VP(2,3,-5,-4,6,7,'paint','mirror'),
+        VP(-5,-4,0,1,7,9,'dark','antenna'),VP(-6,6,5,6,0,2,'dark','skirt'),VP(-6,6,-6,-5,0,2,'dark','skirt'));
+        W(7,10,3,6);W(7,10,-6,-3);W(-10,-7,3,6);W(-10,-7,-6,-3);
+      }else{
+        // Next Gen: low wide stance, rear diffuser with strakes, single-lug hubs.
+        P.push(VP(-11,11,-6,6,0,2,'paintDark','chassis'),VP(-11,11,-6,6,2,5,'paint','body'),
+        VP(5,11,-5,5,4,5,'paint','hood'),VP(11,13,-4,4,2,4,'paint','nose'),VP(12,13,-3,3,2,3,'paint','nose'),
+        VP(10,13,-6,6,0,1,'dark','splitter'),VP(12,13,-5,5,1,2,'dark','fBumper'),VP(12,13,-2,2,2,3,'dark','nose'),
+        VP(10,12,4,5,3,4,'headlight','nose'),VP(10,12,-5,-4,3,4,'headlight','nose'),
+        VP(6,10,5,7,3,5,'paint','fendF'),VP(6,10,-7,-5,3,5,'paint','fendFL'),
+        VP(-11,-6,5,7,3,5,'paint','fendR'),VP(-11,-6,-7,-5,3,5,'paint','fendR'),
+        VP(-6,3,-4,4,5,7,'paint','cabin'),VP(3,4,-3,3,5,7,'glass','glass'),VP(3,4,-3,3,6,7,'glassHi','glass'),
+        VP(-5,2,4,5,5,7,'glass','glass'),VP(-5,2,-5,-4,5,7,'glass','glass'),VP(-6,-5,-3,3,5,7,'glass','glass'),
+        VP(-6,3,-4,4,7,8,'paint','roof'),VP(-4,0,-2,2,8,9,'plate','roofplate'),
+        VP(-3,3,6,7,2,5,'plate','plateL'),VP(-3,3,-7,-6,2,5,'plate','plateR'),
+        VP(-11,-6,-5,5,4,5,'paint','deck'),
+        VP(-13,-11,-4,4,0,2,'dark','diffuser'),VP(-13,-11,-3,-2,0,2,'dark','diffuser'),
+        VP(-13,-11,0,1,0,2,'dark','diffuser'),VP(-13,-11,2,3,0,2,'dark','diffuser'),
+        VP(-12,-11,-6,6,5,6,'paint','spoiler'),VP(-12,-11,4,5,4,5,'dark','spoiler'),VP(-12,-11,-5,-4,4,5,'dark','spoiler'),
+        VP(-12,-11,-6,6,2,4,'dark','tail'),VP(-12,-11,3,5,3,4,'red','tail'),VP(-12,-11,-5,-3,3,4,'red','tail'),
+        VP(-12,-11,-6,6,1,2,'dark','rBumper'),
+        VP(-12,-11,1,2,0,1,'chrome','exh'),VP(-12,-11,-2,-1,0,1,'chrome','exh'),
+        VP(2,3,5,6,6,7,'paint','mirror'),VP(2,3,-6,-5,6,7,'paint','mirror'),
+        VP(-5,-4,0,1,7,9,'dark','antenna'),VP(-6,6,6,7,0,2,'dark','skirt'),VP(-6,6,-7,-6,0,2,'dark','skirt'));
+        W(7,10,4,7);W(7,10,-7,-4);W(-10,-7,4,7);W(-10,-7,-7,-4);
+      }
+      if(eraFamily==='aero70')P.push(VP(-13,-11,-6,6,2,4,'chrome','rBumper'),VP(11,14,-5,5,2,3,'chrome','fBumper'),VP(-7,-5,-4,4,8,10,'paint','roof'));
+      else if(eraFamily==='box80')P.push(VP(-8,5,-5,5,8,11,'paint','roof'),VP(12,14,-5,5,2,5,'paint','nose'));
+      else if(eraFamily==='round90')P.push(VP(9,14,-3,3,2,4,'paint','nose'),VP(-7,2,-4,4,8,9,'paint','roof'));
+      return P;
+    }
+    function voxApplyDamage(P,dmg){
+      if(dmg<=0)return P;
+      P.push(VP(10,13,4,5,3,4,'scratch','scratch'),VP(10,12,-5,-4,2,3,'scratch','scratch'),
+        VP(-3,3,5,6,4,5,'scratch','scratch'),VP(-2,2,-6,-5,3,4,'scratch','scratch'));
+      if(dmg>=2){
+        for(const pt of P){
+          if(pt.tag=
