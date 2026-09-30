@@ -1,0 +1,247 @@
+ttle with damped
+  //   oscillation around those bent rest angles. That READS as springy,
+  //   bouncy, gelatinous motion at a tiny fraction of the cost.
+  //   True FEM soft-body is INFEASIBLE here: 420 cars on a deterministic
+  //   60 Hz kernel leaves no budget for continuum mechanics, and any
+  //   nondeterminism would desync replays. What ships is honest jiggle,
+  //   labeled as jiggle.
+  // DETERMINISM CONTRACT (do not break):
+  //   - Spring state lives in a render-side WeakMap keyed by car object.
+  //     Gameplay structs are NEVER widened; physics NEVER reads springs back.
+  //   - Kicks derive ONLY from deterministic gameplay state (damage deltas,
+  //     hit-flag rising edges, bodyFront/bodyRear bias). Kick directions come
+  //     from a seeded integer hash of car number/year — never Math.random.
+  //   - Integration uses fixed 1/60 substeps over clamped render dt. Any
+  //     frame-rate variance causes VISUAL variance only, never gameplay
+  //     desync. Every offset this module produces is purely visual.
+  // PERFORMANCE / LOD:
+  //   - Full 7-panel sim only for near/detail cars (wantFull); everyone else
+  //     gets the static bent rest angles — zero per-frame cost beyond the
+  //     variant pick. Mangled (ds3) cars always simulate: they are the show.
+  //   - Hard pool cap (JIGGLE_POOL_MAX); the stalest entry is evicted first.
+  //   - wantFull already follows the Q0-Q3 detailCars budgets, so the tiers
+  //     shrink the sim set automatically.
+  // RENDERER HOOKS (voxel-model worker: build ON these, do not restructure):
+  //   - damageStateFor(dmg) -> 0..3 — the same 4 damage hooks per family
+  //     (gen4/cot/gen6/next) the voxel rebuild preserves.
+  //   - jiggleFor(car, wantFull) -> {hood,deck,bumpF,bumpR,spoil,doorL,doorR,
+  //     wobX,wobY,wobA,damageState}. Hinge angles are radians; wobbles are px
+  //     (wobA is yaw radians). Apply the angles to your voxel panel-group
+  //     hinges and the wobbles to the body-group offset. When the car is
+  //     undamaged, far away, or the pool is exhausted you get JIGGLE_REST[ds]
+  //     — the static bent angles, safe to apply unconditionally.
+  // OPTIONS TOGGLE (central registry contract):
+  //   - window.CHINASKAR_OPTS.damage (boolean, default true when absent).
+  //     When false, jiggleFor returns the all-zero JIGGLE_REST[0], the
+  //     renderers skip every crumple overlay added by this module, AND the
+  //     physics accumulation sites never raise c.damage/bodyFront — off is
+  //     off: no jiggle, no baked deformation, no damage-driven handling loss.
+  // ==========================================================================
+  function damageFxOn(){const o=window.CHINASKAR_OPTS;return !o||o.damage!==false;}
+  const JIGGLE_PANELS=[
+    // key, stiffness k, damping d, rest angles per damageState 0..3, kick gain, clamp, fz (1=nose / 0=tail bias)
+    {key:'hood', k:120,d:7.5,rest:[0,.05,.2,.48], gain:4.5,max:.95,fz:1},
+    {key:'deck', k:120,d:7.5,rest:[0,.04,.16,.4], gain:4.5,max:.85,fz:0},
+    {key:'bumpF',k:58, d:4.0,rest:[0,0,.14,.55],  gain:5.2,max:1.15,fz:1},
+    {key:'bumpR',k:58, d:4.0,rest:[0,0,.12,.5],   gain:5.2,max:1.1, fz:0},
+    {key:'spoil',k:150,d:9.0,rest:[0,.03,.14,.62],gain:4.2,max:1.25,fz:.5},
+    {key:'doorL',k:135,d:8.0,rest:[0,0,.07,.28],  gain:4.0,max:.6,  fz:.5},
+    {key:'doorR',k:135,d:8.0,rest:[0,0,.07,.28],  gain:4.0,max:.6,  fz:.5},
+  ];
+  const JIGGLE_WOB={k:52,d:4.2,gain:34,max:3.4}; // suspension wobble (px + yaw), underdamped so it bounces
+  const JIGGLE_POOL_MAX=56;
+  const JIGGLE_REST=[0,1,2,3].map(ds=>{const o={damageState:ds,wobX:0,wobY:0,wobA:0,_static:true};for(const p of JIGGLE_PANELS)o[p.key]=p.rest[ds];return Object.freeze(o);});
+  const jiggleMap=new WeakMap(),jigglePool=[];
+  let jiggleFrame=-1,jiggleDt=1/60,jiggleLastT=0;
+  function damageStateFor(dmg){return dmg<.16?0:dmg<.42?1:dmg<.72?2:3;}
+  function jiggleHash(n){let h=(Math.imul(n|0,2654435761))|0;h^=h>>>15;h=(Math.imul(h,2246822519))|0;h^=h>>>13;return ((h>>>0)%2000)/1000-1;} // deterministic [-1,1)
+  function jiggleAlloc(c,dmg,seed){
+    let e;
+    if(jigglePool.length<JIGGLE_POOL_MAX){e={panels:JIGGLE_PANELS.map(()=>({x:0,v:0})),wob:{x:0,v:0,y:0,vy:0,a:0,va:0},car:null,frame:-1,damageState:0,seed:0,lastDamage:0,lastHit:0,hood:0,deck:0,bumpF:0,bumpR:0,spoil:0,doorL:0,doorR:0,wobX:0,wobY:0,wobA:0};jigglePool.push(e);}
+    else{e=jigglePool[0];for(const o of jigglePool)if(o.frame<e.frame)e=o;if(e.car)jiggleMap.delete(e.car);}
+    e.car=c;e.seed=seed;e.frame=-1;e.damageState=damageStateFor(dmg);e.lastDamage=dmg;e.lastHit=c.hit||0;
+    for(const p of e.panels){p.x=0;p.v=0;}
+    e.wob.x=e.wob.v=e.wob.y=e.wob.vy=e.wob.a=e.wob.va=0;
+    e.hood=e.deck=e.bumpF=e.bumpR=e.spoil=e.doorL=e.doorR=0;e.wobX=e.wobY=e.wobA=0;
+    jiggleMap.set(c,e);return e;
+  }
+  function jiggleFor(c,wantFull){
+    if(!damageFxOn())return JIGGLE_REST[0]; // options toggle: off is off
+    const dmg=c?(c.damage||0):0,ds=damageStateFor(dmg);
+    if(!c||ds<2)return JIGGLE_REST[ds];
+    if(!wantFull&&ds<3)return JIGGLE_REST[ds]; // LOD: far / lightly-damaged cars keep static crumple
+    let e=jiggleMap.get(c);
+    if(!e)e=jiggleAlloc(c,dmg,(((c.num||1)*7919+((c.modelYear||2026)*131)+13)|0));
+    if(e.frame!==renderCache.frame){
+      e.frame=renderCache.frame;
+      if(jiggleFrame!==renderCache.frame){jiggleFrame=renderCache.frame;const now=performance.now();jiggleDt=jiggleLastT?clamp((now-jiggleLastT)/1000,1/240,1/20):1/60;jiggleLastT=now;}
+      jiggleStep(e,c,dmg,ds,!!wantFull);
+    }
+    return e;
+  }
+  function jiggleStep(e,c,dmg,ds,full){
+    e.damageState=ds;
+    // --- kicks from deterministic gameplay state only (never Math.random) ---
+    const dDmg=dmg-e.lastDamage;e.lastDamage=dmg;
+    const hit=c.hit||0,dHit=hit-e.lastHit;e.lastHit=hit;
+    const bf=clamp(c.bodyFront||0,0,1),br=clamp(c.bodyRear||0,0,1);
+    if(dDmg>.0004||dHit>.015){
+      for(let i=0;i<e.panels.length;i++){
+        const p=e.panels[i],P=JIGGLE_PANELS[i],sg=jiggleHash(e.seed+i*131)<0?-1:1,wF=.35+.65*(P.fz*bf+(1-P.fz)*br);
+        if(dDmg>0)p.v+=dDmg*P.gain*wF*sg;
+        if(dHit>0)p.v+=dHit*P.gain*6*wF*sg;
+      }
+      const sw=jiggleHash(e.seed+999),sw2=jiggleHash(e.seed+1999),W=JIGGLE_WOB;
+      if(dDmg>0){e.wob.v+=dDmg*W.gain*sw;e.wob.vy+=dDmg*W.gain*.6*sw2;e.wob.va+=dDmg*W.gain*.05*sw;}
+      if(dHit>0){e.wob.v+=dHit*W.gain*3.2*sw;e.wob.vy+=dHit*W.gain*2*sw2;e.wob.va+=dHit*W.gain*.16*sw;}
+    }
+    // --- fixed 1/60 substeps; render-side only, never feeds back into physics ---
+    const W=JIGGLE_WOB;let rem=jiggleDt,n=0;
+    while(rem>1e-6&&n<3){
+      const h=Math.min(1/60,rem);rem-=h;n++;
+      const w=e.wob;
+      w.v+=(-W.k*w.x-W.d*w.v)*h;w.x=clamp(w.x+w.v*h,-W.max,W.max);
+      w.vy+=(-W.k*w.y-W.d*w.vy)*h;w.y=clamp(w.y+w.vy*h,-W.max,W.max);
+      w.va+=(-W.k*1.4*w.a-W.d*w.va)*h;w.a=clamp(w.a+w.va*h,-.12,.12);
+      if(full)for(let i=0;i<e.panels.length;i++){const p=e.panels[i],P=JIGGLE_PANELS[i],rest=P.rest[ds];
+        p.v+=(-P.k*(p.x-rest)-P.d*p.v)*h;p.x=clamp(p.x+p.v*h,-P.max,P.max);}
+    }
+    // faint speed-coupled tremor for mangled cars — closed-form f(frame), never random
+    const tremor=ds===3?Math.sin(renderCache.frame*.23+jiggleHash(e.seed)*6.283)*Math.min(1,Math.hypot(c.vx||0,c.vy||0)/160)*.45:0;
+    e.wobX=e.wob.x;e.wobY=e.wob.y+tremor;e.wobA=e.wob.a;
+    for(let i=0;i<JIGGLE_PANELS.length;i++){const P=JIGGLE_PANELS[i];e[P.key]=full?e.panels[i].x:P.rest[ds];}
+  }
+  function drawCar(x,y,a,color,num,isPlayer=false,steer=0,damage=0,hit=0,modelYear=2026,roll=0,rolled=false,speed=0,detail=true,paint=[],jig=null){
+    const family=stockFamily(modelYear),damageState=damage<.16?0:damage<.42?1:damage<.72?2:3,headingBucket=mod(Math.round((a-renderCache.sunAzimuth)/TAU*8),8),sun=Math.cos((headingBucket/8)*TAU),retro=graphicsMode==='nes'||graphicsMode==='genesis',q=qualityConfig(),showDetail=detail&&(isPlayer||renderScale>.2),spin=((Math.abs(speed)*.035)|0)&3;
+    const dmgOn=damageFxOn(),j=jig||JIGGLE_REST[damageState],snapQ=retro?v=>Math.round(v*4)/4:v=>v,jWobA=snapQ(j.wobA),jWobX=snapQ(j.wobX),jWobY=snapQ(j.wobY);
+    const dims={aero70:[34,19],box80:[31,20],round90:[33,18],gen4:[31,18],cot:[30,19],gen6:[33,17],next:[34,19]}[family],L=dims[0],B=dims[1],front=L*.5-(damageState>=2?2.8:0),rear=-L*.5+(damageState===3?3.8:0),secondary=shadeHex(color,num%2?42:-42),shade=retro?(sun>.25?0:-28):Math.round(sun*24),body=hit>0?'#ffffff':shadeHex(color,shade);
+    ctx.save();ctx.translate(x,y);ctx.rotate(a+jWobA);ctx.translate(jWobX,jWobY);ctx.scale(1,Math.max(.16,Math.abs(Math.cos(roll||0))));
+    if(q.shadows||isPlayer){ctx.save();ctx.rotate(-a-renderCache.sunAzimuth);ctx.fillStyle='rgba(0,0,0,.42)';ctx.beginPath();ctx.ellipse(3,4,L*.57,B*.48,0,0,TAU);ctx.fill();ctx.restore();}
+    // Four separate stock-car silhouettes; all details remain baked-looking and quantized.
+    ctx.fillStyle='#050708';for(const wx of [-L*.31,L*.31])for(const wy of [-B*.58,B*.58]){ctx.save();ctx.translate(wx,wy);ctx.rotate(wx>0?steer:0);ctx.fillRect(-4,-2.3,8,4.6);if(showDetail&&qualityTier<2){ctx.strokeStyle=spin%2?'#555':'#999';ctx.lineWidth=1;ctx.beginPath();spin%2?(ctx.moveTo(-2,0),ctx.lineTo(2,0)):(ctx.moveTo(0,-2),ctx.lineTo(0,2));ctx.stroke();}ctx.restore();}
+    ctx.fillStyle=body;ctx.beginPath();
+    if(graphicsMode==='n64'){
+      if(family==='aero70'){ctx.moveTo(rear,-B*.26);ctx.lineTo(rear+5,-B*.56);ctx.lineTo(-L*.2,-B*.5);ctx.lineTo(front-6,-B*.37);ctx.lineTo(front,0);ctx.lineTo(front-6,B*.37);ctx.lineTo(-L*.2,B*.5);ctx.lineTo(rear+5,B*.56);ctx.lineTo(rear,B*.26);}
+      else if(family==='box80'){ctx.moveTo(rear,-B*.46);ctx.lineTo(front-4,-B*.46);ctx.lineTo(front,-B*.28);ctx.lineTo(front,B*.28);ctx.lineTo(front-4,B*.46);ctx.lineTo(rear,B*.46);}
+      else if(family==='round90'){ctx.moveTo(rear,-B*.33);ctx.lineTo(-L*.22,-B*.53);ctx.lineTo(front-5,-B*.4);ctx.lineTo(front,0);ctx.lineTo(front-5,B*.4);ctx.lineTo(-L*.22,B*.53);ctx.lineTo(rear,B*.33);}
+      else{ctx.moveTo(rear,-B*.38);ctx.lineTo(-L*.12,-B*.52);ctx.lineTo(front-4,-B*.38);ctx.lineTo(front,-B*.16);ctx.lineTo(front,B*.16);ctx.lineTo(front-4,B*.38);ctx.lineTo(-L*.12,B*.52);ctx.lineTo(rear,B*.38);}
+    }
+    else if(family==='aero70'){ctx.moveTo(rear,-B*.28);ctx.quadraticCurveTo(rear+4,-B*.58,-L*.18,-B*.52);ctx.lineTo(front-6,-B*.38);ctx.quadraticCurveTo(front+2,-B*.2,front,0);ctx.quadraticCurveTo(front+2,B*.2,front-6,B*.38);ctx.lineTo(-L*.18,B*.52);ctx.quadraticCurveTo(rear+4,B*.58,rear,B*.28);}
+    else if(family==='box80'){ctx.moveTo(rear,-B*.46);ctx.lineTo(front-4,-B*.46);ctx.lineTo(front,-B*.28);ctx.lineTo(front,B*.28);ctx.lineTo(front-4,B*.46);ctx.lineTo(rear,B*.46);}
+    else if(family==='round90'){ctx.moveTo(rear,-B*.34);ctx.quadraticCurveTo(-L*.18,-B*.55,front-5,-B*.4);ctx.quadraticCurveTo(front+2,-B*.18,front,0);ctx.quadraticCurveTo(front+2,B*.18,front-5,B*.4);ctx.quadraticCurveTo(-L*.18,B*.55,rear,B*.34);}
+    else if(family==='gen4'){ctx.moveTo(rear,-B*.34);ctx.quadraticCurveTo(rear+2,-B*.52,-L*.12,-B*.53);ctx.lineTo(front-3,-B*.43);ctx.quadraticCurveTo(front+2,-B*.24,front,0);ctx.quadraticCurveTo(front+2,B*.24,front-3,B*.43);ctx.lineTo(-L*.12,B*.53);ctx.quadraticCurveTo(rear+2,B*.52,rear,B*.34);}
+    else if(family==='cot'){ctx.moveTo(rear,-B*.48);ctx.lineTo(front-3,-B*.48);ctx.lineTo(front,B*-.28);ctx.lineTo(front,B*.28);ctx.lineTo(front-3,B*.48);ctx.lineTo(rear,B*.48);}
+    else if(family==='gen6'){ctx.moveTo(rear,-B*.38);ctx.lineTo(-L*.12,-B*.5);ctx.lineTo(front-4,-B*.38);ctx.lineTo(front,-B*.18);ctx.lineTo(front,B*.18);ctx.lineTo(front-4,B*.38);ctx.lineTo(-L*.12,B*.5);ctx.lineTo(rear,B*.38);}
+    else{ctx.moveTo(rear,-B*.44);ctx.lineTo(-L*.05,-B*.54);ctx.lineTo(front-2,-B*.36);ctx.lineTo(front,-B*.13);ctx.lineTo(front,B*.13);ctx.lineTo(front-2,B*.36);ctx.lineTo(-L*.05,B*.54);ctx.lineTo(rear,B*.44);}
+    ctx.closePath();ctx.fill();
+    if(hit>0){ctx.save();ctx.strokeStyle='rgba(255,224,71,'+clamp(hit*5,.3,.95)+')';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();}
+    ctx.fillStyle=secondary;if(family==='cot')ctx.fillRect(-L*.36,-B*.48,L*.12,B*.96);else{ctx.beginPath();ctx.moveTo(-L*.3,-B*.49);ctx.lineTo(-L*.08,-B*.51);ctx.lineTo(L*.3,B*.38);ctx.lineTo(L*.08,B*.47);ctx.closePath();ctx.fill();}
+    // Glass band, sky reflection and heading-bucket specular streak.
+    const roofW=family==='aero70'?L*.27:family==='box80'?L*.36:family==='round90'?L*.39:family==='gen4'?L*.34:family==='cot'?L*.38:L*.42,roofH=family==='box80'?B*.62:family==='next'?B*.48:B*.56;ctx.fillStyle='#14232d';ctx.fillRect(-roofW*.55,-roofH*.5,roofW,roofH);ctx.fillStyle=retro?'#6f9ca3':'#83b7c7';ctx.fillRect(-roofW*.36,-roofH*.38,roofW*.45,roofH*.76);
+    if(showDetail&&qualityTier<2){ctx.fillStyle=retro?'#d7e6df':`rgba(255,255,255,${.24+Math.max(0,sun)*.42})`;ctx.fillRect(-roofW*.22+(headingBucket%4)*1.2,-roofH*.35,Math.max(2,roofW*.34),retro?1:1.5);}
+    if(family==='cot'){ctx.fillStyle='#090b0c';ctx.fillRect(rear-2,-B*.65,3,B*1.3);ctx.fillRect(rear-5,-B*.68,8,2);ctx.fillRect(rear-5,B*.64,8,2);}else if(family==='next'){ctx.fillStyle='#08090a';ctx.fillRect(rear-2,-B*.39,3,B*.78);for(let k=-2;k<=2;k++)ctx.fillRect(rear-5,k*2.3,4,1);}
+    if(showDetail){ctx.fillStyle=isPlayer?'#ffe047':'#f5f0df';ctx.font=(graphicsMode==='nes'?'5px "Press Start 2P"':'700 7px "Roboto Mono"');ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(isPlayer?'1':String(num%100),L*.22,0);ctx.save();ctx.rotate(Math.PI/2);ctx.font='700 6px "Roboto Mono"';ctx.fillText(isPlayer?'1':String(num%100),0,-1);ctx.restore();}
+    if(damageState>=1){ctx.strokeStyle='#292929';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(front-7,-B*.35);ctx.lineTo(front-11,-1);ctx.lineTo(front-5,B*.22);ctx.stroke();}
+    if(damageState>=2){ctx.fillStyle='#080909';ctx.fillRect(front-5,-B*.32,5,B*.22);ctx.fillRect(rear,-B*.42,4,B*.24);}
+    if(damageState===3){ctx.globalAlpha=.42;ctx.fillStyle='#050505';ctx.fillRect(rear+2,-B*.47,L*.64,B*.94);ctx.globalAlpha=1;ctx.fillStyle='#777';ctx.fillRect(-L*.16,-B*.54,L*.27,2);}
+    // ---- Deforming damage (damage-system module): hinged panels crumple ----
+    // ---- around bent rest angles; the j.* springs add the jiggle.       ----
+    // ---- Toggle: window.CHINASKAR_OPTS.damage=false skips all of this.  ----
+    if(dmgOn&&damageState>=1){ctx.strokeStyle='rgba(16,16,16,.9)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(front-10,-B*.3);ctx.lineTo(front-5,-B*.12);ctx.lineTo(front-5,B*.12);ctx.lineTo(front-10,B*.3);ctx.stroke();}
+    if(dmgOn&&damageState>=2){
+      // Hood flap buckled up around the cowl hinge, driven by the hood spring.
+      ctx.save();ctx.translate(front-10,0);ctx.rotate(snapQ(j.hood));
+      ctx.fillStyle=shadeHex(body,-36);ctx.beginPath();
+      ctx.moveTo(0,-B*.42);ctx.lineTo(3.5,-B*.46);ctx.lineTo(7,-B*.22);ctx.lineTo(10,0);ctx.lineTo(7,B*.22);ctx.lineTo(3.5,B*.46);ctx.lineTo(0,B*.42);ctx.closePath();ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.moveTo(0,-B*.42);ctx.lineTo(10,0);ctx.lineTo(0,B*.42);ctx.closePath();ctx.fill();
+      ctx.strokeStyle='#1c1e1e';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(2,-B*.4);ctx.lineTo(6,0);ctx.lineTo(2,B*.4);ctx.stroke();ctx.restore();
+      // Doors punched inward by the door springs.
+      const doorIn=1+snapQ(j.doorL)*10,doorIn2=1+snapQ(j.doorR)*10;
+      ctx.fillStyle='#0a0c0c';
+      ctx.beginPath();ctx.moveTo(-5,-B*.5);ctx.lineTo(1,-B*.54);ctx.lineTo(5,-B*.46+doorIn*.35);ctx.lineTo(1,-B*.36+doorIn*.5);ctx.lineTo(-5,-B*.4+doorIn*.4);ctx.closePath();ctx.fill();
+      ctx.beginPath();ctx.moveTo(-5,B*.5);ctx.lineTo(1,B*.54);ctx.lineTo(5,B*.46-doorIn2*.35);ctx.lineTo(1,B*.36-doorIn2*.5);ctx.lineTo(-5,B*.4-doorIn2*.4);ctx.closePath();ctx.fill();
+      // Bumpers dangling off the nose/tail on their springs.
+      ctx.save();ctx.translate(front+1.5,0);ctx.rotate(snapQ(j.bumpF));ctx.fillStyle='#141617';ctx.fillRect(-1.5,-B*.36,4,B*.72);ctx.fillStyle='#33393b';ctx.fillRect(-1.5,-B*.36,4,1.6);ctx.restore();
+      ctx.save();ctx.translate(rear-1.5,0);ctx.rotate(-snapQ(j.bumpR));ctx.fillStyle='#141617';ctx.fillRect(-2.5,-B*.4,4,B*.8);ctx.restore();
+    }
+    if(dmgOn&&damageState===3){
+      // Decklid flap kicked up at the tail, mirroring the hood.
+      ctx.save();ctx.translate(rear+10,0);ctx.rotate(-snapQ(j.deck));
+      ctx.fillStyle=shadeHex(body,-42);ctx.beginPath();
+      ctx.moveTo(0,-B*.44);ctx.lineTo(-3.5,-B*.46);ctx.lineTo(-7,-B*.22);ctx.lineTo(-10,0);ctx.lineTo(-7,B*.22);ctx.lineTo(-3.5,B*.46);ctx.lineTo(0,B*.44);ctx.closePath();ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(-10,-B*.44,10,B*.88);ctx.restore();
+      // Spoiler/wing snapped sideways on the spoiler spring.
+      ctx.save();ctx.translate(rear-3,0);ctx.rotate(snapQ(j.spoil)*.9);
+      ctx.fillStyle='#0b0d0d';ctx.fillRect(-5,-B*.64,8,2.4);ctx.fillRect(-5,B*.64-2.4,8,2.4);
+      ctx.fillStyle='#3d4346';ctx.fillRect(-5,-B*.64,8,1);ctx.restore();
+    }
+    if(renderCache.paintOn&&paint&&paint.canvas){ctx.globalAlpha=.96;ctx.drawImage(paint.canvas,-PAINT_CANVAS_W/2,-PAINT_CANVAS_H/2);ctx.globalAlpha=1;}
+    if(rolled){ctx.fillStyle='#dfe5e3';ctx.globalAlpha=.72;ctx.fillRect(-L*.24,-B*.4,L*.44,B*.8);ctx.globalAlpha=1;}ctx.restore();
+  }
+  function drawActivePitCrew(){if(!optOn('pitStops'))return;if(!pitState||!player)return;const pulse=Math.sin(raceTime*18)*3;ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.angle);for(let i=0;i<4;i++){const x=(i<2?-7:7)+pulse*(i%2?.35:-.35),y=i%2?-18:18;ctx.fillStyle=i<2?'#72f08f':'#ffe047';ctx.beginPath();ctx.arc(x,y,4,0,TAU);ctx.fill();ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+3);ctx.lineTo(x+(i%2?5:-5),y+9);ctx.moveTo(x,y+3);ctx.lineTo(x+(i%2?-5:5),y+8);ctx.stroke();}ctx.restore();}
+  function drawYouMarker(target,label){
+    if(!target)return;const bob=Math.sin(performance.now()/190)*3;
+    ctx.save();ctx.translate(target.x,target.y-31+bob);
+    const fs=9/renderScale;ctx.font=`${fs}px "Press Start 2P"`;const tw=ctx.measureText(label).width,pad=6/renderScale,bh=19/renderScale;
+    ctx.fillStyle='#fffbdc';ctx.fillRect(-tw/2-pad,-bh-13/renderScale,tw+pad*2,bh);ctx.strokeStyle='#101316';ctx.lineWidth=2/renderScale;ctx.strokeRect(-tw/2-pad,-bh-13/renderScale,tw+pad*2,bh);
+    ctx.fillStyle='#101316';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,0,-bh/2-13/renderScale);
+    ctx.fillStyle='#ffe047';ctx.strokeStyle='#101316';ctx.lineWidth=2/renderScale;ctx.beginPath();ctx.moveTo(0,-9/renderScale);ctx.lineTo(-7/renderScale,-19/renderScale);ctx.lineTo(7/renderScale,-19/renderScale);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+  }
+  function drawPaceCar(p){if(!p)return;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);ctx.fillStyle='#f4f0d9';ctx.fillRect(-16,-8,32,16);ctx.fillStyle='#1a2426';ctx.fillRect(-5,-7,12,14);ctx.fillStyle=Math.sin(p.flash*13)>0?'#ff4a42':'#48bfff';ctx.fillRect(-6,-12,12,4);ctx.fillStyle='#111';ctx.font='700 6px "Roboto Mono"';ctx.textAlign='center';ctx.fillText('PACE',8,2);ctx.restore();}
+  function drawJetDryer(j){if(!j)return;ctx.save();ctx.translate(j.x,j.y);ctx.rotate(j.angle);ctx.fillStyle='#e7d34b';ctx.fillRect(-24,-11,46,22);ctx.fillStyle='#202729';ctx.fillRect(-19,-8,16,16);ctx.strokeStyle='#cad6d3';ctx.lineWidth=5;ctx.beginPath();ctx.arc(12,0,9,0,TAU);ctx.stroke();ctx.save();ctx.translate(12,0);ctx.rotate(j.fan*8);ctx.beginPath();ctx.moveTo(-8,0);ctx.lineTo(8,0);ctx.moveTo(0,-8);ctx.lineTo(0,8);ctx.stroke();ctx.restore();ctx.fillStyle='#111';ctx.font='700 5px "Roboto Mono"';ctx.textAlign='center';ctx.fillText('DRYER',-11,2);ctx.restore();}
+  function drawVenueQuirks(){
+    if(optOn('blimp')){const bx=Math.sin(raceTime*.035)*4200,by=-3600+Math.cos(raceTime*.02)*180;ctx.save();ctx.translate(bx,by);ctx.fillStyle='#d9e4df';ctx.beginPath();ctx.ellipse(0,0,150,48,0,0,TAU);ctx.fill();ctx.fillStyle='#18c9d1';ctx.fillRect(-62,-12,124,24);ctx.fillStyle='#101316';ctx.font='700 15px "Roboto Mono"';ctx.textAlign='center';ctx.fillText('CHIN CAM',0,5);ctx.strokeStyle='#d9e4df';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(-48,38);ctx.lineTo(-22,72);ctx.lineTo(22,72);ctx.lineTo(48,38);ctx.stroke();ctx.restore();}
+    if(optOn('fireworks')&&(state==='finished'||(racePhase==='green'&&raceTime<10))){for(let i=0;i<7;i++){const x=-900+i*300,y=360+Math.sin(raceTime*3+i)*45,r=35+mod(raceTime*85+i*17,120);ctx.globalAlpha=clamp(1-r/170,0,.75);ctx.strokeStyle=paintPalette[i%paintPalette.length];ctx.lineWidth=4;ctx.beginPath();for(let k=0;k<12;k++){const a=k*TAU/12;ctx.moveTo(x,y);ctx.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);}ctx.stroke();}ctx.globalAlpha=1;}
+  }
+  function drawTow(t){if(!t||!optOn('towTruck'))return;ctx.save();ctx.translate(t.x,t.y);ctx.rotate(t.angle);ctx.fillStyle='#ffe047';ctx.fillRect(-17,-9,31,18);ctx.fillStyle='#101316';ctx.fillRect(2,-7,11,14);ctx.fillStyle='#f3efd9';ctx.fillRect(-12,-6,10,12);ctx.strokeStyle='#d8d2bd';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-16,0);ctx.lineTo(-28,0);ctx.lineTo(-34,6);ctx.stroke();ctx.fillStyle='#050708';ctx.fillRect(-12,-12,8,4);ctx.fillRect(6,-12,8,4);ctx.fillRect(-12,8,8,4);ctx.fillRect(6,8,8,4);ctx.fillStyle=Math.sin(t.flash*9)>0?'#f4473c':'#19cad0';ctx.fillRect(-3,-10,7,3);if(renderCache.paintOn&&t.paint&&t.paint.canvas)ctx.drawImage(t.paint.canvas,-PAINT_CANVAS_W/2,-PAINT_CANVAS_H/2);if(t.serviceState&&t.serviceState!=='DEPOT'){const pr=26+Math.sin(t.flash*6)*5;ctx.strokeStyle='#ffb42d';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,pr,0,TAU);ctx.stroke();ctx.fillStyle='#ffb42d';ctx.font='700 7px "Press Start 2P",monospace';ctx.textAlign='center';ctx.fillText('TOW',0,-pr-5);}ctx.restore();}
+  function drawAmbulance(a){ctx.save();ctx.translate(a.x,a.y);ctx.rotate(a.angle);ctx.fillStyle='#f4f0d9';ctx.fillRect(-14,-8,28,16);ctx.fillStyle='#ef4b42';ctx.fillRect(-3,-7,6,14);ctx.fillRect(-9,-3,18,6);ctx.fillStyle=Math.sin(a.flash*12)>0?'#ef4b42':'#19cad0';ctx.fillRect(-4,-11,8,3);ctx.fillStyle='#050708';ctx.fillRect(-10,-10,6,3);ctx.fillRect(5,-10,6,3);ctx.fillRect(-10,7,6,3);ctx.fillRect(5,7,6,3);ctx.restore();}
+  function drawDriver(d){if(d.taken)return;ctx.save();ctx.translate(d.x,d.y);
+    // Blown to bits: draw the comically scattered parts, jittering in place.
+    if(d.bits){for(let bi=0;bi<5;bi++){const px=[-7,6,-3,8,0][bi]+Math.sin(raceTime*9+bi*2.1)*4,py=[-4,-7,7,5,-1][bi]+Math.cos(raceTime*7+bi*1.7)*4;ctx.fillStyle=bi%2?d.color:'#efb98e';ctx.beginPath();ctx.arc(px,py,2.6,0,TAU);ctx.fill();ctx.strokeStyle='#17191a';ctx.lineWidth=1;ctx.stroke();}ctx.restore();return;}
+    const tumble=(d.ragdoll>0)?d.ragdoll*20:0,pop=1+(d.popUp>0?d.popUp*.35:0);
+    ctx.rotate(d.dir+d.spin*.1+tumble);ctx.scale(pop,pop);const step=Math.sin(raceTime*(d.state==='crawl'?8:12)+d.x*.05)*3;ctx.strokeStyle='#17191a';ctx.lineWidth=2;ctx.beginPath();if(d.state==='crawl'){ctx.moveTo(-2,-2);ctx.lineTo(-8,-6-step);ctx.moveTo(-2,2);ctx.lineTo(-8,6+step);ctx.moveTo(2,-2);ctx.lineTo(7,-6+step);ctx.moveTo(2,2);ctx.lineTo(7,6-step);}else{ctx.moveTo(-1,-1);ctx.lineTo(-6,-6-step);ctx.moveTo(-1,1);ctx.lineTo(-6,6+step);ctx.moveTo(1,-1);ctx.lineTo(6,-5+step);ctx.moveTo(1,1);ctx.lineTo(6,5-step);}ctx.stroke();ctx.fillStyle=d.color;ctx.beginPath();ctx.ellipse(0,0,4.5,5.5,0,0,TAU);ctx.fill();ctx.fillStyle='#efb98e';ctx.beginPath();ctx.arc(5,0,3.2,0,TAU);ctx.fill();ctx.strokeStyle='#f3efd9';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(5,0,3.8,0,TAU);ctx.stroke();
+    // Dizzy stars: the immortal-universe concussion indicator. Pure cartoon.
+    if(d.ragdoll>0){ctx.fillStyle='#ffe65a';for(let s=0;s<3;s++){const a=raceTime*9+s*TAU/3,sx=Math.cos(a)*11,sy=Math.sin(a)*7-7;ctx.beginPath();ctx.moveTo(sx,sy-3.4);ctx.lineTo(sx+1,sy-1);ctx.lineTo(sx+3.4,sy);ctx.lineTo(sx+1,sy+1);ctx.lineTo(sx,sy+3.4);ctx.lineTo(sx-1,sy+1);ctx.lineTo(sx-3.4,sy);ctx.lineTo(sx-1,sy-1);ctx.closePath();ctx.fill();}}
+    ctx.restore();}
+  function drawFirstPersonHUD(ascii=false){
+    if(activeMode!=='walk'&&activeMode!=='fan')return;const cx=W/2,cy=H/2+cameraPitch*H*.16,hit=hitMarker>0,spec=weaponSpec();
+    const gunColor=spec.color;
+    if(onFootDialog){const bw=Math.min(W-28,620),bh=74,x=(W-bw)/2,y=H*.12;ctx.fillStyle='rgba(7,12,13,.91)';ctx.fillRect(x,y,bw,bh);ctx.fillStyle=onFootDialog.color;ctx.fillRect(x,y,8,bh);ctx.fillStyle='#ffe047';ctx.font='700 10px "Press Start 2P"';ctx.textAlign='left';ctx.fillText(onFootDialog.name,x+20,y+22);ctx.fillStyle='#fffbdc';ctx.font='700 13px "Roboto Mono"';const words=onFootDialog.line.split(' ');let line='',yy=y+45;for(const word of words){const test=line+word+' ';if(ctx.measureText(test).width>bw-38){ctx.fillText(line,x+20,yy);line=word+' ';yy+=17;}else line=test;}ctx.fillText(line,x+20,yy);}
+    if(!paintballEnabled())return;
+    // Tracer: a brief beam from the muzzle toward the crosshair on each shot.
+    if(tracer>0){ctx.save();ctx.globalAlpha=clamp(tracer,0,1)*.65;ctx.strokeStyle=gunColor;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(W*.63+80,H*.86-14);ctx.lineTo(cx,cy);ctx.stroke();ctx.restore();}
+    // Crosshair breathes with bloom when firing, snaps white + expanding ring on a hit.
+    const moving=Math.hypot(activeEntity().vx||0,activeEntity().vy||0)>30,gap=(hit?3:7)+crossBloom*16+(moving?4:0),len=10+crossBloom*6;
+    ctx.save();ctx.globalAlpha=.95;ctx.strokeStyle=hit?'#fff':'#7fffe0';ctx.lineWidth=hit?3:2+crossBloom*1.5;ctx.beginPath();ctx.moveTo(cx-gap-len,cy);ctx.lineTo(cx-gap,cy);ctx.moveTo(cx+gap,cy);ctx.lineTo(cx+gap+len,cy);ctx.moveTo(cx,cy-gap-len);ctx.lineTo(cx,cy-gap);ctx.moveTo(cx,cy+gap);ctx.lineTo(cx,cy+gap+len);ctx.stroke();
+    if(hit){ctx.strokeStyle='#ffe047';ctx.beginPath();ctx.moveTo(cx-7,cy-7);ctx.lineTo(cx+7,cy+7);ctx.moveTo(cx+7,cy-7);ctx.lineTo(cx-7,cy+7);ctx.stroke();ctx.strokeStyle='rgba(255,224,71,'+clamp(hitMarker,0,1)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,(1-hitMarker)*44+10,0,TAU);ctx.stroke();}
+    const bob=Math.sin(cameraBobPhase)*5,recoil=muzzleFlash*9+gunKick*14,gunX=W*.63+clamp(cameraYaw,-1,1)*46,gunY=H*.86+bob+recoil;ctx.translate(gunX,gunY);ctx.rotate(-.12);ctx.fillStyle=ascii?'#0b2d25':'#13191b';ctx.fillRect(-18,-8,95,35);ctx.fillStyle=gunColor;ctx.fillRect(4,-14,70,18);ctx.fillStyle='#0a0d0e';ctx.fillRect(18,-10,50,7);ctx.fillRect(-8,24,22,42);ctx.fillStyle='#dae8df';ctx.fillRect(10,-19,20,8);ctx.fillStyle='#101316';ctx.font='700 9px "Roboto Mono"';ctx.textAlign='center';ctx.fillText(spec.name,35,0);
+    // Hopper: visible paint load that empties as you shoot, red when nearly dry.
+    const hopperCap=spec.ammo,hopperFill=clamp(paintAmmo/hopperCap,0,1);
+    ctx.fillStyle='#0c0f10';ctx.beginPath();ctx.ellipse(32,-24,26,13,0,0,TAU);ctx.fill();
+    ctx.fillStyle=hopperFill<.25?'#ff5040':paintPalette[Math.min(paintPalette.length-1,Math.floor(hopperFill*paintPalette.length))];ctx.beginPath();ctx.ellipse(32,-24,20*hopperFill+3,9*hopperFill+2,0,0,TAU);ctx.fill();if(muzzleFlash>0){ctx.fillStyle='#fff36a';ctx.beginPath();ctx.moveTo(77,-13);ctx.lineTo(104,-25);ctx.lineTo(94,-7);ctx.lineTo(111,8);ctx.lineTo(78,5);ctx.closePath();ctx.fill();}ctx.restore();
+    ctx.fillStyle='rgba(0,0,0,.64)';ctx.fillRect(W-144,H-45,132,31);ctx.fillStyle='#fffbdc';ctx.font='700 12px "Roboto Mono"';ctx.textAlign='right';ctx.fillText(spec.name+'  '+paintAmmo,W-20,H-25);
+  }
+  function drawEraSky(horizon,skin){
+    const retro=graphicsMode==='nes'||graphicsMode==='genesis',bands=graphicsMode==='nes'?4:graphicsMode==='genesis'?7:0;
+    if(bands){for(let i=0;i<bands;i++){const t=i/(bands-1);ctx.fillStyle=graphicsMode==='nes'?['#08151a','#10252a','#19363a','#27484a'][i]:shadeHex(skin[0],Math.round(t*48));ctx.fillRect(0,i*(horizon+65)/bands,W,(horizon+65)/bands+1);}if(graphicsMode==='genesis'){ctx.globalAlpha=.28;ctx.fillStyle=skin[2];for(let y=2;y<horizon;y+=4)for(let x=(y&4)?4:0;x<W;x+=8)ctx.fillRect(x,y,1,1);ctx.globalAlpha=1;}}
+    else{const g=ctx.createLinearGradient(0,0,0,horizon+70);g.addColorStop(0,graphicsMode==='ps1'?'#101626':'#14334b');g.addColorStop(.58,graphicsMode==='n64'?'#618aa1':'#487987');g.addColorStop(1,skin[1]);ctx.fillStyle=g;ctx.fillRect(0,0,W,horizon+70);}
+    const sunX=W*.76-cameraYaw*88,sunY=Math.max(24,horizon*.27),sunR=graphicsMode==='nes'?11:graphicsMode==='genesis'?15:23;ctx.fillStyle=graphicsMode==='nes'?'#f3d45c':'#ffe59a';retro?ctx.fillRect(Math.round(sunX-sunR),Math.round(sunY-sunR),sunR*2,sunR*2):(ctx.beginPath(),ctx.arc(sunX,sunY,sunR,0,TAU),ctx.fill());
+    const count=qualityConfig().clouds;for(let i=0;i<count;i++){const c=renderCache.clouds[i],x=mod(c.lane*W+raceTime*(3.5+i*.33)+c.phase*180,W+220)-110,y=18+c.phase%1*Math.max(30,horizon*.52),w=58*c.size,h=12*c.size;ctx.globalAlpha=retro?1:.18;if(retro){ctx.fillStyle=graphicsMode==='nes'?'#a7c6c8':'#a8b8c7';ctx.fillRect(Math.round(x-w*.5),Math.round(y),Math.round(w),Math.max(3,Math.round(h*.55)));if(graphicsMode==='genesis'){ctx.fillStyle=skin[0];for(let dx=-w*.45;dx<w*.45;dx+=4)if(((dx+i)|0)&4)ctx.fillRect(Math.round(x+dx),Math.round(y+h*.1),2,2);}}else{ctx.fillStyle='#eef6f1';ctx.beginPath();ctx.ellipse(x,y,w*.42,h*.55,0,0,TAU);ctx.ellipse(x-w*.3,y+2,w*.28,h*.38,0,0,TAU);ctx.ellipse(x+w*.32,y+3,w*.25,h*.34,0,0,TAU);ctx.fill();}}ctx.globalAlpha=1;
+  }
+  function drawASCIIView(){
+    const active=activeEntity()||player;if(!active){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);return;}
+    const heading=(active.dir??active.angle??0)+cameraYaw,cs=Math.cos(heading),sn=Math.sin(heading),focal=Math.max(380,W*.8)*cameraZoom*(1-fovKick*.24),horizon=H*(.27+cameraPitch*.2)+cameraBob*.7,baseD=nearestPath(active.x,active.y).d,far=3300;
+    const projectInto=(x,y,z,out)=>{const dx=x-active.x,dy=y-active.y,forward=dx*cs+dy*sn,lateral=-dx*sn+dy*cs;if(forward<24)return false;const q=focal/forward;out.x=W*.5+lateral*q;out.y=horizon+(48-z)*q;out.q=q;out.depth=forward;return true;};
+    const glyph=(text,x,y,color,size,alpha=1)=>{if(x<-90||x>W+90||y<-40||y>H+50)return;ctx.globalAlpha=alpha;ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=size>12&&alpha>.65?Math.min(8,size*.45):0;ctx.font=`700 ${Math.max(7,size)}px "Roboto Mono",monospace`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,x,y);};
+    ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+    // Build-style sector portals: each route slice is clipped by depth and emitted back-to-front as text, never polygons.
+    for(let i=84;i>=0;i--){const d0=58+i*far/85,d1=58+(i+1)*far/85;pathAtInto(baseD+d0,asciiP0);pathAtInto(baseD+d1,asciiP1);if(!projectInto(asciiP0.x,asciiP0.y,0,asciiProj)||!projectInto(asciiP1.x,asciiP1.y,0,asciiProj2))continue;const half=TRACK_W*.5*asciiProj.q,row=Math.max(7,Math.min(16,6+asciiProj.q*4)),count=Math.max(8,Math.min(138,Math.floor(half*2/(row*.54)))),depthFade=clamp(1-asciiProj.depth/far*.72,.24,1),roadColor=i%4===0?'#73ffd7':i%2?'#156d70':'#229fc0';glyph((i%3?ASCII_DOTS:ASCII_DASH).slice(0,count*2),asciiProj.x,asciiProj.y,roadColor,row,depthFade);const edge=Math.max(3,half);glyph(i%2?'|':'#',asciiProj.x-edge,asciiProj.y,'#ff7a18',row+2,.9);glyph(i%2?'|':'#',asciiProj.x+edge,asciiProj.y,'#ffdf2b',row+2,.9);if(i%3===0){glyph('::',asciiProj.x-half*.33,asciiProj.y,'#22ffd2',row,depthFade);glyph('::',asciiProj.x+half*.33,asciiProj.y,'#22ffd2',row,depthFade);}if(i%6===0)glyph('··  ··  ··',asciiProj.x,asciiProj.y-row*.55,'#b7fff0',Math.max(7,row-1),depthFade*.72);}
+    // Neon glyph towers ring the roadway. Each stack is a billboarded wall inside the current sector.
+    for(let i=35;i>=0;i--){const d=170+i*92;pathAtInto(baseD+d,asciiP0);const side=i%2?1:-1,off=TRACK_W*.68+95+(i%5)*70,x=asciiP0.x+asciiP0.nx*off*side,y=asciiP0.y+asciiP0.ny*off*side;if(!projectInto(x,y,38+(i%6)*15,asciiProj)||asciiProj.depth>far)continue;const colors=['#ff641f','#50ff66','#2ea8ff','#ffe33d','#cb55ff','#27fff2'],color=colors[i%colors.length],sz=clamp(asciiProj.q*13,7,21),levels=2+(i%5);for(let r=0;r<levels;r++)glyph(r===0?'/##\\':r===levels-1?'|__|':'|::|',asciiProj.x,asciiProj.y-r*sz*.86,color,sz,clamp(1-i/52,.36,1));}
+    const drawEntity=(o,text,color,z=8)=>{if(!o||o.removed||o.towed||!projectInto(o.x,o.y,z,asciiProj)||asciiProj.depth>far)return;const sz=clamp(asciiProj.q*18,7,25);glyph(text,asciiProj.x,asciiProj.y,color,sz,clamp(1-asciiProj.depth/far*.72,.3,1));};
+    const mobileLod=mobileMode?[1,1,2,4][qualityTier]:1;
+    if(optOn('crowd'))for(let i=0;i<fans.length;i+=Math.max(2,mobileLod*2))drawEntity(fans[i],'i',fans[i].color,7);
+    if(optOn('ragdoll'))for(let i=0;i<drivers.length;i++)if(!drivers[i].taken)drawEntity(drivers[i],drivers[i].state==='crawl'?'_o/':'Y',drivers[i].color,6);
+    if(optOn('cleanup'))for(let i=0;i<cleanupCrews.length;i++)drawEntity(cleanupCrews[i],'[&]','#ffe43b',10);
+    if(svcOn('ambulance'))for(let i=0;i<ambulances.length;i++)drawEntity(ambulances[i],'[+]','#ff3255',11);
+    for(let i=0;i<cars.length;i+=mobileLod){const c=cars[i];if(c.removed|
