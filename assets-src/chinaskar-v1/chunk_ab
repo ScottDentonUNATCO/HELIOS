@@ -1,0 +1,389 @@
+e-mode #walkControls .walkPad,
+      .mobile-mode #walkControls .lookPad { grid-template-columns:repeat(2,64px); grid-template-rows:repeat(2,64px); gap:10px; }
+      .mobile-mode #walkControls .walkPad button,
+      .mobile-mode #walkControls .lookPad button,
+      .mobile-mode #walkControls .walkActions button { width:64px; min-width:64px; height:64px; min-height:64px; }
+      .mobile-mode #walkControls .walkActions { flex-direction:row; gap:12px; }
+    }
+    @media (prefers-reduced-motion:reduce) { .slip,.cameraToast { transition:none; } }
+    .mobile-mode .cameraChip { top:max(92px,calc(env(safe-area-inset-top) + 92px)); right:max(8px,env(safe-area-inset-right)); font-size:6px; }
+    .mobile-mode .cameraToast { bottom:max(104px,calc(env(safe-area-inset-bottom) + 104px)); max-width:92vw; overflow:hidden; text-overflow:ellipsis; }
+    /* Paintball master toggle: when the options registry disables paintball, the
+       shop and fire buttons hide and all paintball systems no-op (off = off). */
+    .paintball-off #fireBtn, .paintball-off #walkFireBtn, .paintball-off #shopBtn { display:none !important; }
+    .weekendFlow { grid-template-columns:repeat(3,1fr); }
+    .weekendButton { margin-top:10px; background:#ffb42d; color:#101316; }
+    .qualCard,.standingsCard { width:min(700px,100%); text-align:left; }
+    .qualHead { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .qualRound { font:9px/1.5 "Press Start 2P",monospace; color:var(--cyan); }
+    .qualMeta { margin:7px 0 0; color:var(--muted); font-size:11px; line-height:1.45; }
+    .qualTrack { height:14px; margin:18px 0 14px; border:3px solid var(--line); background:#242a2d; overflow:hidden; }
+    .qualProgress { height:100%; width:0; background:repeating-linear-gradient(90deg,var(--cyan) 0 38px,var(--yellow) 38px 76px); transition:width .3s steps(4,end); }
+    .qualResults { max-height:42vh; overflow-y:auto; border-top:3px solid var(--line); border-bottom:3px solid var(--line); }
+    .qualRow,.standingRow { display:grid; grid-template-columns:50px minmax(0,1fr) 92px; gap:8px; align-items:center; min-height:34px; padding:6px 8px; font:700 10px/1.3 "Roboto Mono",monospace; }
+    .qualRow:nth-child(odd),.standingRow:nth-child(odd) { background:color-mix(in srgb,var(--cyan) 8%,transparent); }
+    .qualRow.you,.standingRow.you { background:var(--yellow); color:#101316; }
+    .qualRow span:last-child,.standingRow span:not(:nth-child(2)) { text-align:right; font-variant-numeric:tabular-nums; }
+    .qualActions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+    .stageBanner { position:absolute; z-index:14; left:50%; top:44%; transform:translate(-50%,-50%); width:min(560px,92vw); padding:16px 18px; background:#ffe047f2; color:#101316; border:4px solid #101316; box-shadow:8px 8px 0 #000; text-align:center; pointer-events:none; }
+    .stageBanner[hidden] { display:none !important; }
+    .stageBanner strong { display:block; font:clamp(17px,5vw,30px)/1.25 "Press Start 2P",monospace; }
+    .stageBanner span { display:block; margin-top:9px; font:700 11px/1.55 "Roboto Mono",monospace; }
+    .standingsHead { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:12px; }
+    .standingsMeta { color:var(--muted); font-size:10px; line-height:1.45; }
+    .standingsList { max-height:55vh; overflow-y:auto; border:3px solid var(--line); }
+    .standingRow { grid-template-columns:42px minmax(90px,1fr) 58px 46px 52px 48px; }
+    .standingRow.header { position:sticky; top:0; z-index:1; background:var(--ink); color:var(--panel); font:8px/1.3 "Press Start 2P",monospace; }
+    .standingRow.cutoff { border-bottom:4px solid var(--red); }
+    .format-off .stageChoices { opacity:.42; pointer-events:none; }
+    .playoff-off #standingsBtn,.playoff-off #menuStandingsBtn,.playoff-off #finishStandingsBtn,.playoff-off #mobileStandings { display:none !important; }
+    @media (max-width:600px) {
+      .weekendFlow { grid-template-columns:1fr; }
+      .qualHead,.standingsHead { display:block; }
+      .qualActions { grid-template-columns:1fr; }
+      .standingRow { grid-template-columns:34px minmax(74px,1fr) 44px 34px 40px 34px; gap:4px; padding-inline:5px; font-size:8px; }
+      .standingRow.header { font-size:6px; }
+      .qualRow { grid-template-columns:38px minmax(0,1fr) 76px; font-size:9px; }
+    }
+    @media (prefers-reduced-motion:reduce) { .qualProgress { transition:none; } }
+  </style>
+</head>
+<body>
+<main class="game" id="game">
+  <canvas id="track" aria-label="CHINASKAR stock car racing game with multiple cameras"></canvas>
+  <div class="scanlines"></div>
+  <div class="satTelemetry" id="venueReadout" aria-hidden="true"><span>CHINASKAR</span> · 印度 ⇄ 中国<br>DAYTONA GROTTO TRI-OVAL</div>
+
+  <div class="hud" id="hud" hidden>
+    <div class="meter">
+      <div class="label">POSITION</div>
+      <div class="value"><span id="pos">1</span><span style="font-size:11px"> / <span id="field">420</span></span></div>
+      <div class="sub">LAP <span id="lap">1</span> / 100</div>
+    </div>
+    <div class="centerHud">
+      <div class="flag" id="raceTime">00:00.0</div>
+      <button class="mobileMenuBtn" id="mobileMenuBtn" aria-label="Open race controls" aria-expanded="false">RACE MENU</button>
+      <button class="pause" id="pauseBtn" aria-label="Pause race">PAUSE</button>
+      <button class="modeSwitch" id="modeBtn" aria-label="Switch between race car, tow truck, and walking">DRIVE: RACE CAR</button>
+      <button class="viewSwitch" id="viewBtn" aria-label="Cycle Chase, Cockpit, 2.5D, Trackside, Helicopter, Blimp, Orbit, City Map, and Free cameras">VIEW: CHASE</button>
+      <button class="viewSwitch" id="graphicsBtn" aria-label="Switch graphics mode">GFX: NES</button>
+      <button class="viewSwitch" id="eraBtn" aria-label="Switch stock-car body era">BODY: 1990s</button>
+      <button class="pitSwitch" id="pitBtn" aria-label="Request a pit stop">CALL PIT</button>
+      <button class="viewSwitch" id="crtBtn" aria-label="Toggle CRT scanlines">CRT: ON</button>
+      <button class="shopSwitch" id="shopBtn" aria-label="Open paintball shop">PAINT SHOP</button>
+      <button class="viewSwitch" id="standingsBtn" aria-label="Open playoff standings">STANDINGS</button>
+      <span class="pitStatus" id="pitStatus"></span>
+      <span class="cameraReadout" id="cameraReadout">LOOK 0° · PITCH 0°</span>
+    </div>
+    <div class="meter right">
+      <div class="label">SPEED</div>
+      <div class="value"><span id="speed">0</span> <span style="font-size:10px">MPH</span></div>
+      <div class="sub">TIRE SLIP</div>
+      <div class="slipWrap"><div class="slip" id="slip"></div></div>
+      <div class="sub"><span id="integrity">BODY 100%</span> · <span id="fuelState">FUEL SEALED</span></div>
+    </div>
+  </div>
+
+  <aside class="diagnostics" id="diagnostics" aria-label="Performance diagnostics" hidden>
+    <div class="diagnosticsGrid">
+      <span>FPS</span><span id="diagFps">—</span>
+      <span>FRAME</span><span id="diagFrame">— ms</span>
+      <span>PHYSICS</span><span id="diagPhysics">— ms</span>
+      <span>INPUT→FRAME EST.</span><span id="diagLatency">— ms</span>
+      <span>ACTIVE CARS</span><span id="diagCars">0</span>
+      <span>CAMERA</span><span id="diagCamera">MENU</span>
+    </div>
+    <canvas id="diagGraph" width="156" height="28" aria-label="Recent frame-time graph"></canvas>
+  </aside>
+
+  <div class="slipCue" id="slipCue" aria-hidden="true"></div>
+  <div class="countdown" id="countdown"></div>
+  <div class="hostCard hidden" id="hostCard" role="status" aria-live="polite">
+    <div class="hosts">🐒 × 🐵</div>
+    <div class="hostsTitle">SUN WUKONG &amp; HANUMAN</div>
+    <div class="hostsQuote">"Greetings! The Monkey King of the East and the Monkey God of the South welcome you to CHINASKAR — American NASCAR where nobody can die! 420 cars. Zero funerals. Flattened by a stock car? Walk it off. Blown to bits? The ambulance puts you back together."</div>
+    <div class="hostsCta">NOW — START YOUR DESTINIES!</div>
+  </div>
+  <div class="cameraChip" id="cameraChip" hidden>CAM · CHASE</div>
+  <div class="cameraToast" id="cameraToast" role="status" aria-live="polite"></div>
+  <div class="stageBanner" id="stageBanner" role="status" aria-live="assertive" hidden>
+    <strong id="stageTitle">STAGE 1 COMPLETE</strong>
+    <span id="stageSummary"></span>
+  </div>
+
+  <div class="touch" id="touchControls" aria-label="Touch driving controls">
+    <div class="cluster steerCluster">
+      <button data-key="left" aria-label="Steer left">◀</button>
+      <button data-key="right" aria-label="Steer right">▶</button>
+    </div>
+    <div class="cluster lookCluster">
+      <button class="cam" id="camLeft" aria-label="Look left">↶</button>
+      <button class="cam" id="camCycle" aria-label="Next camera; hold on Trackside to toggle automatic cuts">CAM</button>
+      <button class="cam" id="camRight" aria-label="Look right">↷</button>
+    </div>
+    <div class="cluster pedalCluster">
+      <button class="fire" id="fireBtn" aria-label="Fire paintball"><span class="controlGlyph">F</span><span class="controlWord">FIRE</span></button>
+      <button class="brake" data-key="brake" aria-label="Brake"><span class="controlGlyph">B</span><span class="controlWord">BRAKE</span></button>
+      <button class="gas" data-key="gas" aria-label="Accelerate"><span class="controlGlyph">A</span><span class="controlWord">GAS</span></button>
+    </div>
+  </div>
+
+  <div class="touch walkTouch" id="walkControls" aria-label="On-foot touch controls">
+    <div class="walkPad" aria-label="Walk movement">
+      <button class="forward" data-walk="forward" aria-label="Walk forward">▲</button>
+      <button class="strafeLeft" data-walk="strafeLeft" aria-label="Strafe left">◀</button>
+      <button class="back" data-walk="back" aria-label="Walk backward">▼</button>
+      <button class="strafeRight" data-walk="strafeRight" aria-label="Strafe right">▶</button>
+    </div>
+    <div class="lookPad" aria-label="Camera look">
+      <button class="lookUp" data-look="up" aria-label="Look up">⌃</button>
+      <button class="lookLeft" data-look="left" aria-label="Look left">↶</button>
+      <button class="lookDown" data-look="down" aria-label="Look down">⌄</button>
+      <button class="lookRight" data-look="right" aria-label="Look right">↷</button>
+    </div>
+    <div class="cluster walkActions">
+      <button class="cam" id="enterBtn" aria-label="Interact or enter nearby spare car"><span class="controlGlyph">E</span><span class="controlWord">INTERACT</span></button>
+      <button class="fire" id="walkFireBtn" aria-label="Fire paintball"><span class="controlGlyph">F</span><span class="controlWord">FIRE</span></button>
+    </div>
+  </div>
+
+  <section class="mobileSheet" id="mobileSheet" role="dialog" aria-modal="true" aria-label="Race controls" hidden>
+    <div class="mobileSheetHead">
+      <div><div class="mobileSheetTitle">ANDROID RACE CONTROL</div><div class="mobileSheetStatus" id="mobileQualityStatus">AUTO · 100%</div></div>
+      <button class="mobileSheetClose" id="mobileSheetClose">DONE</button>
+    </div>
+    <div class="mobileGrid">
+      <button class="accent" id="mobileCamera">CAMERA</button>
+      <button id="mobileMode">VEHICLE</button>
+      <button id="mobilePit">CALL PIT</button>
+      <button id="mobileGraphics">GRAPHICS</button>
+      <button id="mobileEra">BODY ERA</button>
+      <button id="mobilePaint">PAINT SHOP</button>
+      <button id="mobileStandings">STANDINGS</button>
+      <button id="mobileQuality">QUALITY</button>
+      <button id="mobileFullscreen">FULLSCREEN</button>
+      <button class="danger" id="mobilePause">PAUSE</button>
+      <button id="mobileRecenter">RECENTER</button>
+    </div>
+  </section>
+
+  <section class="overlay" id="menu">
+    <div class="card">
+      <div class="stripe"></div>
+      <h1>CHINASKAR</h1>
+      <p class="tag">Draft through a hyper-massive Daytona-style tri-oval under the immortal city. Work pit road, survive the pack, recover wrecks, or leave the car for proper first-person paintball chaos.</p>
+      <div class="hostStrip">🐒 <b>SUN WUKONG</b> × <b>HANUMAN</b> 🐵 HOST TONIGHT'S RACE — AMERICAN NASCAR, EAST &amp; SOUTH. EVERYONE IS IMMORTAL: NO FUNERALS, ONLY SLAPSTICK.</div>
+      <div class="choiceTitle">PICK YOUR FIELD</div>
+      <div class="choices">
+        <button class="choice" data-cars="100"><strong>100</strong><small>FAST &amp; FERAL</small></button>
+        <button class="choice selected" data-cars="420"><strong>420</strong><small>MAXIMUM CHIN</small></button>
+      </div>
+      <div class="rideRow" aria-label="Pick your car color">
+        <span class="rideLabel">YOUR RIDE</span>
+        <button class="ride selected" style="--ride:#00e8f3" data-color="#00e8f3" aria-label="Cyan car"></button>
+        <button class="ride" style="--ride:#ffe047" data-color="#ffe047" aria-label="Yellow car"></button>
+        <button class="ride" style="--ride:#f4473c" data-color="#f4473c" aria-label="Red car"></button>
+        <button class="ride" style="--ride:#78d15e" data-color="#78d15e" aria-label="Green car"></button>
+      </div>
+      <div class="choiceTitle">PICK YOUR CIRCUIT</div>
+      <div class="startFlow trackFlow">
+        <button class="choice trackChoice selected" data-track="grotto"><strong>DAYTONA GROTTO</strong><small>GIANT TRI-OVAL · FULL FACILITY</small></button>
+        <button class="choice trackChoice" data-track="moon"><strong>MOON TRI-OVAL</strong><small>LOW-G · CRATERS · EARTHRISE</small></button>
+        <button class="choice trackChoice" data-track="daytona"><strong>DAYTONA · NODE 1</strong><small>2.5-MI TRI-OVAL · 31° BANKING</small></button>
+        <button class="choice trackChoice" data-track="talladega"><strong>TALLADEGA · NODE 18</strong><small>2.66-MI TRI-OVAL · 33° BANKING</small></button>
+        <button class="choice trackChoice" data-track="bristol"><strong>BRISTOL · NODE 33</strong><small>0.533-MI BULLRING · 24–30° BANKING</small></button>
+        <button class="choice trackChoice" data-track="darlington"><strong>DARLINGTON · NODE 47</strong><small>1.366-MI EGG · THE LADY IN BLACK</small></button>
+        <button class="choice trackChoice" data-track="charlotte"><strong>CHARLOTTE · NODE 72</strong><small>1.5-MI QUAD-OVAL · 24° BANKING</small></button>
+        <button class="choice trackChoice" data-track="martinsville"><strong>MARTINSVILLE · NODE 101</strong><small>0.526-MI PAPERCLIP · FLAT</small></button>
+      </div>
+      <div class="choiceTitle">START FLOW</div>
+      <div class="startFlow">
+        <button class="choice startChoice selected" data-start="rolling"><strong>ROLLING</strong><small>PACE THEN GREEN</small></button>
+        <button class="choice startChoice" data-start="staggered"><strong>STAGGERED</strong><small>SAFE GRID RELEASE</small></button>
+      </div>
+      <div class="choiceTitle">RACE DISTANCE</div>
+      <div class="startFlow lapFlow">
+        <button class="choice lapChoice" data-laps="3"><strong>3</strong><small>SPRINT</small></button>
+        <button class="choice lapChoice selected" data-laps="12"><strong>12</strong><small>FEATURE</small></button>
+        <button class="choice lapChoice" data-laps="100"><strong>100</strong><small>ENDURANCE</small></button>
+      </div>
+      <div class="choiceTitle">RACE WEEKEND · STAGE BREAKS</div>
+      <div class="startFlow weekendFlow stageChoices" aria-label="Stage break fractions">
+        <button class="choice stageChoice selected" data-stage="25-50"><strong>25 / 50%</strong><small>EARLY BREAKS</small></button>
+        <button class="choice stageChoice" data-stage="33-67"><strong>33 / 67%</strong><small>EVEN THIRDS</small></button>
+        <button class="choice stageChoice" data-stage="40-70"><strong>40 / 70%</strong><small>LONG FINISH</small></button>
+      </div>
+      <button class="start weekendButton" id="menuStandingsBtn">VIEW PLAYOFF STANDINGS</button>
+      <div class="choiceTitle" style="margin-top:18px">STOCK-CAR BODY ERA</div>
+      <div class="graphicsChoices bodyChoices" aria-label="Stock-car body era">
+        <button class="gfxChoice bodyChoice" data-body-era="1970s"><strong>1970s</strong><small>COKE-BOTTLE</small></button>
+        <button class="gfxChoice bodyChoice" data-body-era="1980s"><strong>1980s</strong><small>BOXY</small></button>
+        <button class="gfxChoice bodyChoice selected" data-body-era="1990s"><strong>1990s</strong><small>ROUNDED</small></button>
+      </div>
+      <div class="choiceTitle" style="margin-top:18px">GRAPHICS MODE</div>
+      <div class="graphicsChoices">
+        <button class="gfxChoice selected" data-graphics="nes"><strong>NES</strong><small>8-BIT</small></button>
+        <button class="gfxChoice" data-graphics="genesis"><strong>GENESIS</strong><small>16-BIT GRIT</small></button>
+        <button class="gfxChoice" data-graphics="snes"><strong>SNES</strong><small>16-BIT GLOW</small></button>
+        <button class="gfxChoice" data-graphics="n64"><strong>N64</strong><small>BOXY LOW-POLY</small></button>
+        <button class="gfxChoice" data-graphics="ps1"><strong>PS1</strong><small>POLY JITTER</small></button>
+        <button class="gfxChoice" data-graphics="ascii"><strong>ASCII</strong><small>NEON CITY</small></button>
+      </div>
+      <div class="choiceTitle qualityLabel">MOBILE PERFORMANCE</div>
+      <div class="qualityChoices" aria-label="Mobile performance mode">
+        <button class="qualityChoice selected" data-quality="auto">AUTO</button>
+        <button class="qualityChoice" data-quality="high">HIGH</button>
+        <button class="qualityChoice" data-quality="battery">BATTERY</button>
+      </div>
+      <button class="start" id="startBtn">DROP THE FLAG</button>
+      <button class="start optOpenBtn" id="optBtn">⚙ OPTIONS</button>
+      <p class="mobileHint">Touch mode turns on automatically on Android-sized screens. Big thumb controls, portrait HUD, drag-to-look FPS, adaptive resolution, and fullscreen are ready.</p>
+      <p class="keys">Drive: WASD / ARROWS · SPACE brake · Q pit. On foot/fan: W/S move · A/D strafe · J/L/I/K look · E interact / enter a spare. T cycles race car, tow truck, driver, and fan. C / Shift+C cycles 9 distinct cameras · hold the camera control on Trackside for AUTO cuts · U/O zoom · X fire · P paint shop · G graphics · R restart.<br>Complete sprint, feature, or endurance races with drafting, cautions, timed service, rollover recovery, and a wreck-to-spare-car comeback loop.</p>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="paintShop">
+    <div class="card shopCard">
+      <div class="stripe"></div>
+      <h1 style="font-size:clamp(20px,5vw,34px)">PAINTBALL SHOP</h1>
+      <p class="shopNote">Pick a hopper. Every loadout refills your paint and changes the shot pattern immediately.</p>
+      <div class="shopGrid">
+        <button class="shopItem selected" data-weapon="marker"><strong>MARKER</strong><small>240 rounds · straight shot</small></button>
+        <button class="shopItem" data-weapon="rapid"><strong>RAPID</strong><small>360 rounds · fast stream</small></button>
+        <button class="shopItem" data-weapon="scatter"><strong>SCATTER</strong><small>180 rounds · triple burst</small></button>
+      </div>
+      <div class="shopStatus" id="shopStatus">MARKER EQUIPPED · 240 PAINTBALLS</div>
+      <button class="start" id="closeShop" style="margin-top:14px">BACK TO THE CHAOS</button>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="options">
+    <div class="card optCard">
+      <div class="stripe"></div>
+      <h1 style="font-size:clamp(20px,5vw,32px)">OPTIONS</h1>
+      <p class="shopNote">Every system has a real switch. OFF means fully off: no spawning, no updating, no rendering, no sound. Gameplay choices save automatically; diagnostics starts OFF.</p>
+      <div class="optList" id="optList" role="group" aria-label="Game system toggles"></div>
+      <button class="start" id="closeOpts" style="margin-top:14px">BACK TO THE RACES</button>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="qualifying" aria-label="Qualifying session">
+    <div class="card qualCard">
+      <div class="stripe"></div>
+      <div class="qualHead">
+        <div>
+          <h1 style="font-size:clamp(20px,5vw,34px)">QUALIFYING</h1>
+          <div class="qualRound" id="qualRound">ROUND 1 · GROUP RUNS</div>
+          <p class="qualMeta" id="qualMeta">The full field runs in traffic-sized groups. Fast cars advance to the knockout rounds.</p>
+        </div>
+        <div class="optState" id="qualClock">--.---</div>
+      </div>
+      <div class="qualTrack"><div class="qualProgress" id="qualProgress"></div></div>
+      <div class="qualResults" id="qualResults" aria-live="polite"></div>
+      <div class="qualActions">
+        <button class="start" id="qualSkip">SKIP TO GRID</button>
+        <button class="start" id="qualContinue" hidden>START FROM GRID</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="standings" aria-label="Playoff standings">
+    <div class="card standingsCard">
+      <div class="stripe"></div>
+      <div class="standingsHead">
+        <div>
+          <h1 style="font-size:clamp(20px,5vw,32px)">PLAYOFF TABLE</h1>
+          <div class="standingsMeta" id="standingsMeta">SESSION CUP · 0 RACES</div>
+        </div>
+        <div class="optState">TOP 16</div>
+      </div>
+      <div class="standingsList" id="standingsList"></div>
+      <div class="qualActions">
+        <button class="start" id="resetStandings">RESET SESSION CUP</button>
+        <button class="start" id="closeStandings">BACK TO THE RACES</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="handlingLab">
+    <div class="card labCard">
+      <div class="stripe"></div>
+      <h1 style="font-size:clamp(20px,5vw,32px)">HANDLING LAB</h1>
+      <p class="labIntro">Live player-car tuning. Changes take effect on the next physics tick; no race restart required. Defaults are the current shipping tune.</p>
+      <div class="labList" id="handlingList"></div>
+      <div class="labActions">
+        <button class="start" id="resetHandling">RESET TO DEFAULTS</button>
+        <button class="start" id="exportHandling">EXPORT TUNE</button>
+      </div>
+      <textarea class="labExport" id="handlingExport" readonly hidden aria-label="Exported handling tune"></textarea>
+      <p class="labStatus" id="handlingStatus" aria-live="polite"></p>
+      <button class="start" id="closeHandling">BACK TO OPTIONS</button>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="paused">
+    <div class="card">
+      <div class="stripe"></div>
+      <h1 style="font-size:clamp(24px,6vw,38px)">PIT STOP</h1>
+      <p class="tag">The field is frozen. Your tires are not.</p>
+      <button class="start" id="resumeBtn">BACK TO GREEN</button>
+      <button class="start optOpenBtn" id="optBtn2">⚙ OPTIONS</button>
+    </div>
+  </section>
+
+  <section class="overlay hidden" id="finish">
+    <div class="card">
+      <div class="stripe"></div>
+      <h1 style="font-size:clamp(23px,6vw,38px)">CHECKERED!</h1>
+      <div class="result" id="result"></div>
+      <button class="start weekendButton" id="finishStandingsBtn">VIEW PLAYOFF STANDINGS</button>
+      <button class="start" id="againBtn" style="margin-top:10px">NEW RACE WEEKEND</button>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const canvas = document.getElementById('track');
+  const ctx = canvas.getContext('2d');
+  const ui = {
+    menu:document.getElementById('menu'), paused:document.getElementById('paused'), finish:document.getElementById('finish'),
+    hud:document.getElementById('hud'), countdown:document.getElementById('countdown'), pos:document.getElementById('pos'),
+    paintShop:document.getElementById('paintShop'), cameraReadout:document.getElementById('cameraReadout'), shopStatus:document.getElementById('shopStatus'),
+    field:document.getElementById('field'), lap:document.getElementById('lap'), speed:document.getElementById('speed'),
+    slip:document.getElementById('slip'), slipCue:document.getElementById('slipCue'), raceTime:document.getElementById('raceTime'), result:document.getElementById('result'),
+    integrity:document.getElementById('integrity'), fuelState:document.getElementById('fuelState'), pitStatus:document.getElementById('pitStatus'),
+    options:document.getElementById('options'), optList:document.getElementById('optList'),
+    qualifying:document.getElementById('qualifying'), qualRound:document.getElementById('qualRound'), qualMeta:document.getElementById('qualMeta'), qualClock:document.getElementById('qualClock'), qualProgress:document.getElementById('qualProgress'), qualResults:document.getElementById('qualResults'),
+    standings:document.getElementById('standings'), standingsList:document.getElementById('standingsList'), standingsMeta:document.getElementById('standingsMeta'), stageBanner:document.getElementById('stageBanner'), stageTitle:document.getElementById('stageTitle'), stageSummary:document.getElementById('stageSummary'),
+    handlingLab:document.getElementById('handlingLab'), handlingList:document.getElementById('handlingList'),
+    handlingExport:document.getElementById('handlingExport'), handlingStatus:document.getElementById('handlingStatus'),
+    diagnostics:document.getElementById('diagnostics')
+  };
+  const TAU=Math.PI*2, S=6400, R=2480;
+  // A clean, exaggerated Daytona-style tri-oval: long superstretch, broad 31-degree-inspired
+  // end turns, and a shallow frontstretch dogleg with the facility concentrated infield-side.
+  // ---------------------------------------------------------------------------
+  // HISTORICAL TRACKS — HONESTY NOTE (read before citing these as accurate):
+  // The six real-world layouts below (daytona, talladega, bristol, darlington,
+  // charlotte, martinsville) are MODELED from published length / banking / shape
+  // specifications (see per-track sources in the generator). No lidar or scan
+  // data exists for these tracks; no scan-level accuracy is claimed. Centerlines
+  // are analytic stadium/egg constructions normalized to the published lap
+  // length, with turn radii and widths taken from the cited published figures.
+  // Geometric necessity: a closed loop of [straight, circular arc, straight,
+  // circular arc] must have equal straights (provable from the closure
+  // equations), so where published front/back straight lengths differ, the
+  // construction uses their average and the lap length is kept exact. The
+  // per-track geomNote records the specific approximation. Banking is
+  // represented in geometry (turn radii), metadata, and presentation only —
+  // the 60 Hz physics kernel has no banking model and is untouched.
+  // Sacred-node lore (node numbers, dragon veins) is creative fiction for the
+  // CHINASKAR immortal universe, not a historical claim.
+  // ---------------------------------------------------------------------------
+  const TRACKS={
+    grotto:{name:'DAYTONA GROTTO TRI-OVAL',width:1540,gravity:1,controls:[[0,1030],[-760,1450],[-1850,1980],[-3250,2140],[-5000,1840],[-6020,1080],[-6400,0],[-6250,-1080],[-5580,-2180],[-4100,-2660],[-2000,-2680],[0,-2680],[2000,-2680],[4100,-2660],[5580,-2180],[6250,-1080],[6400,0],[6020,1080],[5000,1840],[3250,2140],[1850,1980],[760,1450]]},
+    moon:{name:'MARE IMMORTALIS MOON TRI-OVAL',width:1780,gravity:.31,controls:[[0,1200],[-900,1740],[-2700,2550],[-5100,2360],[-6800,1420],[-7350,0],[-7200,-1200],[-6350,-2520],[-4200,-3100],[-1500,-3120],[1500,-3120],[4200,-3100],[6350,-2520],[7200,-1200],[7350,0],[6800,1420],[5100,2360],[2700,2550],[900,1740]]},
+    daytona:{name:"DAYTONA — NODE 1 · FIRST THUNDER",epithet:"The First Node",flavor:"2.5-mi tri-oval · 31° banking · the Great American Race",node:1,vein:"Atlantic–Kunlun Vein",width:66,gravity:1,lengthMi:2.4999,banking:"31° turns · 18° tri-oval · 6° straights",geomNote:"Straights averaged (3800/3000 ft) — two-arc theorem; see source comment.",controls:[[-50,1860],[-206,1845],[-359,1815],[-511,1776],[-662,1734],[-815,1697],[-969,1671],[-1125,1661],[-1282,1661],[-1439,1661],[-1595,1661],[-1752,1661],[-1909,1661],[-2065,1661],[-2222,1661],[-2379,1661],[-2536,1661],[-2692,1661],[-2849,1661],[-3005,1652],[-3160,1627],[-3312,1588],[-3459,1535],[-3601,1469],[-3736,1389],[-3863,1297],[-3980,1194],[-4087,1080],[-4183,956],[-4267,824],[-4339,684],[-4396,539],[-4440,388],[-4469,234],[-4484,78],[-4484,-78],[-4469,-234],[-4440,-388],[-4396,-538],[-4339,-684],[-4267,-824],[-4183,-956],[-4087,-1080],[-3980,-1194],[-3863,-1297],[-3736,-1389],[-3601,-1469],[-3459,-1535],[-3312,-1588],[-3160,-1627],[-3005,-1652],[-2849,-1661],[-2692,-1661],[-2536,-1661],[-2379,-1661],[-2222,-1661],[-2065,-1661],[-1909,-1661],[-1752,-1661],[-1595,-1661],[-1439,-1661],[-1282,-1661],[-1125,-1661],[-969,-1661],[-812,-1661],[-655,-1661],[-499,-1661],[-342,-1661],[-185,-1661],[-29,-1661],[128,-1661],[285,-1661],[442,-1661],[598,-1661],[755,-1661],[912,-1661],[1068,-1661],[1225,-1661],[1382,-1661],[1538,-1661],[1695,-1661],[1852,-1661],[2008,-1661],[2165,-1661],[2322,-1661],[2479,-1661],[2635,-1661],[2792,-1661],[2948,-1657],[3104,-1638],[3257,-1604],[3406,-1556],[3550,-1495],[3688,-1420],[3817,-1332],[3938,-1233],[4050,-1122],[4150,-1002],[4238,-873],[4314,-736],[4377,-592],[4426,-443],[4460,-291],[4480,-135],[4486,21],[4476,178],[4452,332],[4414,484],[4361,632],[4295,774],[4215,909],[4124,1036],[4020,1153],[3906,1261],[3783,1357],[3651,1441],[3511,1513],[3366,1571],[3216,1615],[3062,1644],[2906,1659],[2749,1661],[2593,1661],[2436,1661],[2279,1661],[2122,1661],[1966,1661],[1809,1661],[1652,1661],[1496,1661],[1339,1661],[1182,1661],[1026,1666],[870,1686],[718,1720],[566,1761],[415,1801],[262,1835],[107,1856]]},
+    talladega:{name:"TALLADEGA — NODE 18 · APPALACHIAN ROAR",epithet:"The Roaring Node",flavor:"2.66-mi tri-oval · 33° banking · 200-mph pack racing",node:18,vein:"Appalachian–Qinling Vein",width:79,gravity:1,lengthMi:2.66,banking:"33° turns · 18° tri-oval",geomNote:"Straights averaged (4300/4000 ft) — two-arc theorem; see source comment.",controls:[[-50,1894],[-206,1881],[-360,1853],[-512,1816],[-663,1775],[-815,1734],[-968,1701],[-1123,1679],[-1279,1672],[-1436,1672],[-1592,1672],[-1749,1672],[-1905,1672],[-2062,1672],[-2218,1672],[-2375,1672],[-2532,1672],[-2688,1672],[-2845,1672],[-3001,1672],[-3158,1672],[-3314,1665],[-3469,1643],[-3621,1606],[-3770,1555],[-3912,1491],[-4048,1414],[-4177,1324],[-4296,1223],[-4405,1110],[-4503,989],[-4590,858],[-4664,720],[-4725,576],[-4772,427],[-4805,274],[-4823,118],[-4827,-38],[-4816,-194],[-4790,-349],[-4750,-500],[-4697,-647],[-4629,-789],[-4549,-923],[-4457,-1049],[-4353,-1166],[-4239,-1273],[-4115,-1369],[-3983,-1453],[-3843,-1524],[-3698,-1582],[-3548,-1626],[-3394,-1655],[-3238,-1670],[-3081,-1672],[-2925,-1672],[-2768,-1672],[-2612,-1672],[-2455,-1672],[-2299,-1672],[-2142,-1672],[-1985,-1672],[-1829,-1672],[-1672,-1672],[-1516,-1672],[-1359,-1672],[-1202,-1672],[-1046,-1672],[-889,-1672],[-733,-1672],[-576,-1672],[-420,-1672],[-263,-1672],[-106,-1672],[50,-1672],[207,-1672],[363,-1672],[520,-1672],[676,-1672],[833,-1672],[990,-1672],[1146,-1672],[1303,-1672],[1459,-1672],[1616,-1672],[1773,-1672],[1929,-1672],[2086,-1672],[2242,-1672],[2399,-1672],[2555,-1672],[2712,-1672],[2869,-1672],[3025,-1672],[3182,-1672],[3338,-1662],[3493,-1638],[3644,-1599],[3792,-1546],[3933,-1480],[4068,-1401],[4195,-1309],[4313,-1206],[4421,-1093],[4517,-969],[4602,-838],[4674,-699],[4733,-554],[4778,-404],[4808,-250],[4824,-94],[4826,62],[4813,218],[4785,372],[4743,523],[4687,669],[4618,810],[4536,943],[4442,1068],[4336,1183],[4220,1289],[4095,1383],[3962,1465],[3821,1534],[3675,1589],[3524,1631],[3370,1658],[3214,1671],[3058,1672],[2901,1672],[2744,1672],[2588,1672],[2431,1672],[2275,1672],[2118,1672],[1962,1672],[1805,1672],[1648,1672],[1492,1672],[1335,1672],[1179,1675],[1023,1691],[869,1721],[718,1760],[567,1801],[415,1841],[262,1872],[106,1891]]},
+    bristol:{name:"BRISTOL — NODE 33 · THUNDER BASIN",epithet:"The Bullring Node",flavor:"0.533-mi concrete oval · 24–30° banking · bump and run",node:33,vein:"Thunder Basin Vein",width:71,gravity:1,lengthMi:0.5329,banking:"24–30° progressive turns · 4–9° straights",geomNote:"",controls:[[-50,493],[-122,493],[-195,493],[-268,493],[-340,493],[-413,492],[-485,483],[-554,464],[-620,434],[-682,395],[-736,347],[-783,292],[-822,231],[-851,165],[-870,95],[-879,23],[-877,-50],[-864,-121],[-841,-190],[-808,-255],[-767,-314],[-716,-366],[-659,-411],[-596,-446],[-528,-472],[-458,-488],[-385,-493],[-313,-493
