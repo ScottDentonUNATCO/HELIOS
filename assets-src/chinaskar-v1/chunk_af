@@ -1,0 +1,267 @@
+VenueVehicles(dt){
+    if(paceCar&&optOn('paceCar')){ // toggle: OFF means the pace car stays parked (field paces behind the leader)
+      paceCar.flash+=dt;const run=racePhase==='pace'||racePhase==='caution'||racePhase==='restart';
+      // RACE CONTROL: under yellow the pace car paces the field at field pace (86) after
+      // picking up the leader; at the one-to-go it pulls off-line so the field takes the green.
+      const cruise=racePhase==='caution'?86:racePhase==='restart'?64:112;
+      paceCar.d=mod(paceCar.d+dt*(run?cruise:34),L);
+      if(racePhase==='restart')paceCar.offT=Math.min(1,(paceCar.offT||0)+dt/2.4);else paceCar.offT=0;
+      const pe=paceCar.offT||0,pull=pe*pe*(3-2*pe); // smoothstep pull-off
+      const off=run?(racePhase==='restart'?-TRACK_W*.64*pull:0):-TRACK_W*.64;
+      const p=pathAt(paceCar.d);paceCar.x=p.x+p.nx*off;paceCar.y=p.y+p.ny*off;paceCar.angle=p.angle;}
+    if(jetDryer&&optOn('jetDryer')){jetDryer.fan+=dt;jetDryer.d=mod(jetDryer.d+dt*(racePhase==='caution'?54:14),L);const p=facilityPoint(jetDryer.d,racePhase==='caution'?-.42:-.69);jetDryer.x=p.x;jetDryer.y=p.y;jetDryer.angle=p.angle;}
+  }
+  function updateWalk(dt){
+    if(!optOn('onFoot'))return;
+    if(!playerDriver)return;
+    if(activeMode!=='walk'){
+      playerDriver.inCar=true;playerDriver.x=player.x-Math.sin(player.angle)*13;playerDriver.y=player.y+Math.cos(player.angle)*13;playerDriver.vx=player.vx;playerDriver.vy=player.vy;playerDriver.dir=player.angle;
+      return;
+    }
+    playerDriver.inCar=false;playerDriver.dir=player.angle+cameraYaw;
+    const forward=(keys.gas||walkKeys.forward?1:0)-(keys.brake||walkKeys.back?1:0),strafe=(keys.strafeRight||walkKeys.strafeRight?1:0)-(keys.strafeLeft||walkKeys.strafeLeft?1:0),pace=68;
+    const tx=(Math.cos(playerDriver.dir)*forward-Math.sin(playerDriver.dir)*strafe)*pace,ty=(Math.sin(playerDriver.dir)*forward+Math.cos(playerDriver.dir)*strafe)*pace;
+    playerDriver.vx+=(tx-playerDriver.vx)*Math.min(1,dt*14);playerDriver.vy+=(ty-playerDriver.vy)*Math.min(1,dt*14);playerDriver.x+=playerDriver.vx*dt;playerDriver.y+=playerDriver.vy*dt;
+    const footNear=nearestPath(playerDriver.x,playerDriver.y),footLimit=TRACK_W*.88;if(footNear.off>footLimit){const sign=footNear.side>=0?1:-1;playerDriver.x=footNear.p.x+footNear.p.nx*footLimit*sign;playerDriver.y=footNear.p.y+footNear.p.ny*footLimit*sign;playerDriver.vx*=.2;playerDriver.vy*=.2;}
+    for(const c of [tow,player,...cars]){if(!c||c.removed||c.towed)continue;const dx=playerDriver.x-c.x,dy=playerDriver.y-c.y,ds=dx*dx+dy*dy;if(ds<13*13&&ds>.01){const d=Math.sqrt(ds),sp=Math.hypot(c.vx||0,c.vy||0);playerDriver.x+=dx/d*(13-d);playerDriver.y+=dy/d*(13-d);if(sp>30){playerDriver.vx+=dx/d*sp*.4;playerDriver.vy+=dy/d*sp*.4;playerDriver.bonk=.8;shake=Math.min(12,shake+3);}}}
+  }
+  function updatePossessedFan(dt){if(activeMode!=='fan'||!spectatorFan)return;const forward=(keys.gas||walkKeys.forward?1:0)-(keys.brake||walkKeys.back?1:0),strafe=(keys.strafeRight||walkKeys.strafeRight?1:0)-(keys.strafeLeft||walkKeys.strafeLeft?1:0),dir=(spectatorFan.baseDir??spectatorFan.aim??0)+cameraYaw,pace=70;const tx=(Math.cos(dir)*forward-Math.sin(dir)*strafe)*pace,ty=(Math.sin(dir)*forward+Math.cos(dir)*strafe)*pace;spectatorFan.vx+=(tx-spectatorFan.vx)*Math.min(1,dt*13);spectatorFan.vy+=(ty-spectatorFan.vy)*Math.min(1,dt*13);spectatorFan.x+=spectatorFan.vx*dt;spectatorFan.y+=spectatorFan.vy*dt;spectatorFan.aim=dir;const n=nearestPath(spectatorFan.x,spectatorFan.y),lim=TRACK_W*.9;if(n.off>lim){const s=n.side>=0?1:-1;spectatorFan.x=n.p.x+n.p.nx*lim*s;spectatorFan.y=n.p.y+n.p.ny*lim*s;spectatorFan.vx*=.2;spectatorFan.vy*=.2;}}
+  function driverVehicleHit(d,c){if(!c||c.removed||c.towed)return false;const dx=d.x-c.x,dy=d.y-c.y;if(dx*dx+dy*dy>=169)return false;const sp=Math.hypot(c.vx,c.vy);if(sp<=35)return false;const a=Math.atan2(dy,dx);d.vx=Math.cos(a)*(45+sp*.3);d.vy=Math.sin(a)*(45+sp*.3);const sgn=(Math.sign(d.vx-d.vy)||1);d.spin=sgn*8;d.bonk=.9;if(svcOn('ragdoll')&&sp>58){d.ragdoll=Math.max(d.ragdoll||0,1.1+Math.min(1.3,sp/170));d.spin=sgn*(9+sp*.035);}spark(d.x,d.y,3);return true;}
+  function updateDrivers(dt){
+    if(!optOn('ragdoll'))return;
+    for(const d of drivers){if(d.taken)continue;d.bonk=Math.max(0,d.bonk-dt);d.popUp=Math.max(0,(d.popUp||0)-dt);d.spin*=Math.exp(-2.2*dt);d.dir+=d.spin*dt;
+      // Immortal-universe ragdoll: hard hits send drivers into a floppy cartoon
+      // tumble (dizzy stars, then they pop back up). Never gore — slapstick.
+      if(d.ragdoll>0){d.ragdoll-=dt;d.vx*=Math.exp(-.9*dt);d.vy*=Math.exp(-.9*dt);if(d.ragdoll<=0){d.ragdoll=0;d.popUp=.7;d.bonk=0;spark(d.x,d.y,6);}}
+      const pace=d.state==='crawl'?9:18;if(d.bonk<=0&&!(d.ragdoll>0)){d.dir+=Math.sin(raceTime*.7+d.x)*dt*.4;d.vx+=(Math.cos(d.dir)*pace-d.vx)*dt*1.8;d.vy+=(Math.sin(d.dir)*pace-d.vy)*dt*1.8;}
+      d.x+=d.vx*dt;d.y+=d.vy*dt;if(driverVehicleHit(d,player)||driverVehicleHit(d,tow))continue;
+      const cell=32,gx=Math.floor(d.x/cell),gy=Math.floor(d.y/cell);outer:for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){const list=collisionBuckets.get(gridKey(gx+xx,gy+yy));if(!list)continue;for(let k=0;k<list.length;k++)if(driverVehicleHit(d,cars[list[k]]))break outer;}
+    }
+  }
+  function updateFans(dt){
+    if(!optOn('crowd'))return;
+    for(let i=0;i<fans.length;i++){
+      if(selectedCars===420&&((i+physicsTick)&3))continue;const stepDt=selectedCars===420?dt*4:dt;
+      const f=fans[i];if(f===spectatorFan&&activeMode==='fan')continue;f.stumble=Math.max(0,f.stumble-stepDt);f.ragdoll=Math.max(0,(f.ragdoll||0)-stepDt);f.homeD=mod(f.homeD+f.runDir*(7+3*Math.sin(f.phase))*stepDt,L);
+      const p=pathAtInto(f.homeD,f._path),depth=TRACK_W*.69+34+(i%4)*12,targetX=p.x+p.nx*depth*f.side,targetY=p.y+p.ny*depth*f.side;
+      if(f.stumble<=0&&!(f.ragdoll>0)){f.vx+=(targetX-f.x)*stepDt*2.4+p.tx*f.runDir*4*stepDt;f.vy+=(targetY-f.y)*stepDt*2.4+p.ty*f.runDir*4*stepDt;}
+      f.vx*=Math.exp(-3.1*stepDt);f.vy*=Math.exp(-3.1*stepDt);
+      const n=fans[(i+1)%fans.length],dx=f.x-n.x,dy=f.y-n.y,ds=dx*dx+dy*dy;if(ds>0&&ds<70){const inv=1/Math.sqrt(ds);f.vx+=dx*inv*7*stepDt;f.vy+=dy*inv*7*stepDt;}
+      for(let mi=-2;mi<ambList().length;mi++){const m=mi===-2?player:mi===-1?tow:ambList()[mi];if(!m)continue;const bx=f.x-m.x,by=f.y-m.y,bd=bx*bx+by*by;if(bd<324&&bd>.01){const inv=1/Math.sqrt(bd),sp=Math.hypot(m.vx||0,m.vy||0);f.vx+=bx*inv*(28+sp*.25);f.vy+=by*inv*(28+sp*.25);f.stumble=.55;spark(f.x,f.y,2);if(svcOn('ragdoll')&&sp>96){f.ragdoll=Math.max(f.ragdoll||0,1.3);spark(f.x,f.y,4);}}}
+      f.x+=f.vx*stepDt;f.y+=f.vy*stepDt;f.aim=Math.atan2((player?player.y:0)-f.y,(player?player.x:0)-f.x);
+    }
+  }
+  function updateAmbulances(dt){
+    if(!svcOn('ambulance'))return; // toggle: OFF means no ambulance runs
+    for(const a of ambulances){a.flash+=dt;
+      // Slapstick reassembly beat: the ambulance pauses over the scattered
+      // driver parts, snaps them back together, and the driver hops up fine.
+      if(a.reassemble){const r=a.reassemble;r.t-=dt;for(let k=0;k<2;k++){const sa=physicsTick*.31+k*2.4+r.d.x*.13;emitParticle('spark',r.d.x+Math.cos(sa)*17,r.d.y+Math.sin(sa)*17,Math.cos(sa+1.2)*38,Math.sin(sa+1.2)*38,.34);}if(r.t<=0){r.d.bits=false;r.d.popUp=.9;r.d.bonk=0;r.d.spin=0;r.d.vx*=.15;r.d.vy*=.15;r.d.taken=false;r.d.state='wander';spark(r.d.x,r.d.y,12);hostToast('🛠 PUT BACK TOGETHER!');hostSays('ambulance');a.reassemble=null;}continue;}
+      // Bits drivers (blown to bits) get priority: they need reassembly.
+      if(!a.target&&!a.carrying)a.target=drivers.find(d=>!d.taken&&d.bits&&!ambulances.some(o=>o!==a&&(o.target===d||(o.reassemble&&o.reassemble.d===d))))||drivers.find(d=>!d.taken&&!d.bits&&!ambulances.some(o=>o!==a&&o.target===d))||null;
+      let tx=-70,ty=70;if(a.target){tx=a.target.x;ty=a.target.y;}const dx=tx-a.x,dy=ty-a.y,dist=Math.hypot(dx,dy);
+      if(dist>1){const wanted=Math.atan2(dy,dx),err=Math.atan2(Math.sin(wanted-a.angle),Math.cos(wanted-a.angle));a.angle+=clamp(err,-2*dt,2*dt);const targetSpeed=a.target?92:68;a.vx+=(Math.cos(a.angle)*targetSpeed-a.vx)*dt*2.4;a.vy+=(Math.sin(a.angle)*targetSpeed-a.vy)*dt*2.4;a.x+=a.vx*dt;a.y+=a.vy*dt;}
+      if(a.target&&dist<17){const d=a.target;a.target=null;if(d.bits){a.reassemble={d,t:1.7};a.vx*=.2;a.vy*=.2;spark(a.x,a.y,8);hostToast('🚑 PUTTING DRIVER BACK TOGETHER…');}else{d.taken=true;a.carrying=true;spark(a.x,a.y,5);}}
+      // Medical-center drop-off: a scooped (non-bits) driver is delivered to the
+      // infield care center and retires from the race (stays taken aboard).
+      if(a.carrying&&Math.hypot(a.x+70,a.y-70)<24)a.carrying=false;
+    }
+  }
+  // Dedicated seeded RNG for ALL paintball gameplay (shots, spread, splat sizes):
+  // deterministic per race, independent of physics/AI/render RNGs.
+  const PAINT_SEED=0xC0FFEE;let paintSeed=PAINT_SEED;
+  function paintRand(){paintSeed=(paintSeed*1664525+1013904223)>>>0;return paintSeed/4294967296;}
+  function firePaintball(){
+    if(!paintballEnabled()||!fans.length||paintballs.length>=MAX_PAINTBALLS)return;const f=fans[Math.floor(paintRand()*fans.length)],targets=[player,tow,...drivers.filter(d=>!d.taken)];
+    for(let k=0;k<3;k++)targets.push(cars[Math.floor(paintRand()*cars.length)]);const t=targets[Math.floor(paintRand()*targets.length)];if(!t||t.removed)return;
+    const dx=t.x-f.x,dy=t.y-f.y,d=Math.hypot(dx,dy)||1,speed=340+paintRand()*120;paintballs.push({x:f.x,y:f.y,vx:dx/d*speed,vy:dy/d*speed,life:d/speed,color:paintPalette[Math.floor(paintRand()*paintPalette.length)]});
+  }
+  function updatePaint(dt){
+    if(!paintballEnabled()){paintballs.length=0;hitMarker=0;muzzleFlash=0;gunKick=0;crossBloom=0;tracer=0;return;}
+    if(paintRand()<dt*(selectedCars===420?15:9))firePaintball();hitMarker=Math.max(0,hitMarker-dt*5.5);muzzleFlash=Math.max(0,muzzleFlash-dt*12);gunKick=Math.max(0,gunKick-dt*9);crossBloom=Math.max(0,crossBloom-dt*6);tracer=Math.max(0,tracer-dt*8);
+    for(let i=paintballs.length-1;i>=0;i--){const b=paintballs[i];b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;if(b.arc){b.arcZ=(b.arcZ||0)+b.arc*dt;b.vx*=1-dt*.035;b.vy*=1-dt*.035;}let hit=false;
+      if(b.fromPlayer){if(footExpansionOn()){const actorPool=[...onFootSprites,...(optOn('npcTeachers')?teacherNPCs:[])];for(const a of actorPool){if(a.torn>0)continue;if((a.x-b.x)**2+(a.y-b.y)**2<14*14){actorPaintHit(a,b);paintBurst(b.x,b.y,b.color,b.vx,b.vy);paintPop();hit=true;break;}}}if(!hit)for(const c of [tow,...cars]){if(!c||c.removed||c.towed)continue;if((c.x-b.x)**2+(c.y-b.y)**2<18*18){c.hit=.3;paintCarSplat(c,b.x,b.y,b.color);paintBurst(b.x,b.y,b.color,b.vx,b.vy);paintPop();hit=true;break;}}if(!hit)for(const f of fans){if(f===spectatorFan)continue;if((f.x-b.x)**2+(f.y-b.y)**2<12*12){f.stumble=.65;f.vx+=b.vx*.08;f.vy+=b.vy*.08;if(svcOn('ragdoll'))f.ragdoll=Math.max(f.ragdoll||0,1);hit=true;break;}}if(hit){hitMarker=1;b.life=0;}}
+      else{for(const c of [tow,player,...cars]){if(!c||c.removed||c.towed)continue;if((c.x-b.x)**2+(c.y-b.y)**2<18*18){c.hit=Math.max(c.hit,.2);paintCarSplat(c,b.x,b.y,b.color);paintBurst(b.x,b.y,b.color,b.vx,b.vy);b.life=0;break;}}}
+      if(b.life<=0){if(splats.length<MAX_SPLATS)splats.push({x:b.x,y:b.y,color:b.color,r:3+paintRand()*4,life:9});for(const d of drivers)if(!d.taken&&(d.x-b.x)**2+(d.y-b.y)**2<225){d.bonk=.45;d.spin=6;if(svcOn('ragdoll'))d.ragdoll=Math.max(d.ragdoll||0,.9);}for(const f of fans)if((f.x-b.x)**2+(f.y-b.y)**2<121){f.stumble=.4;f.vx+=b.vx*.08;f.vy+=b.vy*.08;}paintballs[i]=paintballs[paintballs.length-1];paintballs.pop();}}
+    for(let i=splats.length-1;i>=0;i--){splats[i].life-=dt;if(splats[i].life<=0){splats[i]=splats[splats.length-1];splats.pop();}}
+  }
+  function emitParticle(kind,x,y,vx,vy,life,part='',rot=0,vr=0,size=0){
+    if(!optOn('particles'))return null;
+    const qc=qualityConfig(),cap=mobileMode?Math.floor(MAX_PARTICLES*qc.effects):MAX_PARTICLES;if(particles.length>=cap)return null;if(performance.now()<renderCache.spawnScaleUntil&&renderRand()>.5)return null;const kindCaps={smoke:256,dust:192,spark:128,heat:64,paint:160,debris:mobileMode&&qualityTier===3?80:160};if(kindCaps[kind]&&particles.reduce((n,p)=>n+(p.kind===kind),0)>=Math.floor(kindCaps[kind]*qc.effects))return null;const q=particlePool.pop()||{};q.kind=kind;q.x=x;q.y=y;q.vx=vx;q.vy=vy;q.life=life;q.max=life;q.part=part;q.rot=rot;q.vr=vr;q.size=Math.min(64,size||0);particles.push(q);return q;
+  }
+  function spark(x,y,n){for(let i=0;i<n;i++)emitParticle('spark',x,y,(Math.random()-.5)*170,(Math.random()-.5)*170,.18+Math.random()*.38);}
+  // --- Paint that sticks: per-car splat decals. New splats convert the world hit
+  // point into car-local coords (so they ride the body), recycle oldest-first at a
+  // per-car cap, and bake into a tiny offscreen canvas so every 2D view renders
+  // painted cars as a single drawImage. 3D billboards draw the array as body blobs.
+  // splatHash is a deterministic hash of the splat itself: no Math.random in this path.
+  const MAX_CAR_PAINT=24, PAINT_CANVAS_W=46, PAINT_CANVAS_H=30;
+  function splatHash(n){const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floor(s);}
+  function bakeOnePaintSplat(px,s,retro){
+    const cx=PAINT_CANVAS_W/2+s.lx,cy=PAINT_CANVAS_H/2+s.ly,h1=splatHash(s.lx*5.3+s.ly*9.1),h2=splatHash(s.lx*11.7+s.ly*3.9);
+    px.fillStyle=s.color;
+    if(retro){const q=Math.max(2,Math.round(s.r*.55));px.fillRect(Math.round(cx-q/2),Math.round(cy-q/2),q,q);px.fillRect(Math.round(cx+s.r*h1),Math.round(cy-s.r*h2),2,2);px.fillRect(Math.round(cx-s.r*h2),Math.round(cy+s.r*h1),2,2);}
+    else{px.beginPath();px.arc(cx,cy,s.r,0,TAU);px.fill();px.beginPath();px.arc(cx+s.r*(.7+h1*.5),cy-s.r*(.4+h2*.7),s.r*.32,0,TAU);px.fill();px.beginPath();px.arc(cx-s.r*(.5+h2*.6),cy+s.r*(.5+h1*.6),s.r*.26,0,TAU);px.fill();px.fillStyle='rgba(255,255,255,.35)';px.beginPath();px.arc(cx-s.r*.28,cy-s.r*.3,s.r*.22,0,TAU);px.fill();}
+  }
+  // Rebake every stored splat (used after a graphics-mode switch clears canvases,
+  // so accumulated paint survives in the new era's style).
+  function bakePaintCanvas(c){
+    const cv=document.createElement('canvas');cv.width=PAINT_CANVAS_W;cv.height=PAINT_CANVAS_H;c.paintCanvas=cv;
+    const px=cv.getContext('2d'),retro=graphicsMode==='nes'||graphicsMode==='genesis';
+    for(const s of c.paint||[])bakeOnePaintSplat(px,s,retro);
+  }
+  function paintCarSplat(c,wx,wy,color){
+    if(!c||c.removed||!paintballEnabled())return;
+    const ca=Math.cos(c.angle||0),sa=Math.sin(c.angle||0),dx=wx-c.x,dy=wy-c.y;
+    const lx=clamp(dx*ca+dy*sa,-16,16),ly=clamp(-dx*sa+dy*ca,-8.5,8.5);
+    if(!c.paint)c.paint=[];
+    if(c.paint.length>=MAX_CAR_PAINT)c.paint.shift();
+    const s={lx,ly,r:2.6+splatHash(lx*3.1+ly*7.7+c.paint.length*13.13)*3.4,color};c.paint.push(s);
+    if(!c.paintCanvas)bakePaintCanvas(c);
+    else bakeOnePaintSplat(c.paintCanvas.getContext('2d'),s,graphicsMode==='nes'||graphicsMode==='genesis');
+  }
+  function clearPaintCanvases(){for(const c of [...cars,...spareCars,tow,player].filter(Boolean))c.paintCanvas=null;}
+  // Eager rebake after a graphics-mode switch: every car that has stored splats
+  // gets its canvas rebaked in the new era's style, so accumulated paint never
+  // visually disappears (clearPaintCanvases stays for the paintball-off purge).
+  function refreshPaintCanvases(){for(const c of [...cars,...spareCars,tow,player].filter(Boolean)){if(c.paint&&c.paint.length)bakePaintCanvas(c);else c.paintCanvas=null;}}
+  // Pooled paint burst at impact: reuses the particle pool and its kind caps.
+  function paintBurst(x,y,color,vx,vy){
+    if(!paintballEnabled())return;
+    const n=mobileMode?4:8;
+    for(let i=0;i<n;i++){const a=splatHash(x*3.7+i*17.3+y)*TAU,sp=40+splatHash(x*7.1+i*5.9)*150;
+      const q=emitParticle('paint',x,y,Math.cos(a)*sp-(vx||0)*.25,Math.sin(a)*sp-(vy||0)*.25,.3+splatHash(i*3.3+x)*.35);
+      if(q){q.color=color;q.size=1.5+splatHash(i*9.1+y)*3;}}
+  }
+  // Short paintball pop: only fired for the player's own hits, throttled.
+  function paintPop(){if(!optOn('audio'))return;if(!audioCtx)return;const now=performance.now();if(now-lastPaintPop<80)return;lastPaintPop=now;const t=audioCtx.currentTime,o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';o.frequency.setValueAtTime(760,t);o.frequency.exponentialRampToValueAtTime(170,t+.08);g.gain.setValueAtTime(.14,t);g.gain.exponentialRampToValueAtTime(.0001,t+.1);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.11);}
+  // --- Paintball master toggle entry point. The central options registry
+  // (window.CHINASKAR_OPTS, owned by the options worker) carries the switch;
+  // an absent registry or absent key means enabled. Every paintball path below
+  // consults paintballEnabled() so the toggle is genuinely off = off.
+  function paintballEnabled(){const o=window.CHINASKAR_OPTS;return !o||o.paintball!==false;}
+  // ---- World-systems toggles + host commentary (this round's build) ----
+  // A parallel worker owns the central options registry at window.CHINASKAR_OPTS
+  // (booleans, default true when absent). Checked defensively: OFF is OFF.
+  function svcOn(key){const o=window.CHINASKAR_OPTS;return !o||o[key]!==false;}
+  const AMB_NONE=[];
+  function ambList(){return svcOn('ambulance')?ambulances:AMB_NONE;}
+  // Host banter: sparse, event-driven, selected by a counter (not Math.random)
+  // so cosmetic chatter never perturbs the gameplay random sequence.
+  const HOST_LINES={
+    green:['🐒🐵 GREEN FLAG! 420 cars, zero funerals — RACE!','🐒 WUKONG: GO GO GO! Try to keep the paint ON the cars!'],
+    caution:['🐒 WUKONG: Caaauution! Somebody redecorated the racing line.','🐵 HANUMAN: Yellow flag, friends — the dragon veins need a breather.','🐒 WUKONG: Pace car is out. Everybody act innocent.'],
+    wreck:['🐵 HANUMAN: That one will need a broom. A big broom.','🐒 WUKONG: He will walk it off — they are immortal, it is fine!','🐒 WUKONG: Somewhere, a crew chief just fainted.'],
+    tow:['🐵 HANUMAN: The tow truck — true hero of this circus.','🐒 WUKONG: Flipped him back like a mooncake!'],
+    ambulance:['🐵 HANUMAN: Do not worry — immortality covers that.','🐒 WUKONG: Put back together! Good as new!'],
+    finish:['🐒 WUKONG: CHECKERED! Somebody tip the tow truck.','🐵 HANUMAN: What a race! The immortals have spoken.']
+  };
+  let banterIdx=0,lastBanterAt=-99,hostCardTimer=null;
+  function hostToast(msg,ms=2600){const toast=document.getElementById('cameraToast');if(!toast)return;toast.textContent=msg;toast.classList.add('show');clearTimeout(cameraToastTimer);cameraToastTimer=setTimeout(()=>toast.classList.remove('show'),ms);}
+  function hostSays(kind){if(!svcOn('hosts'))return;if(state!=='racing'&&!(kind==='finish'&&state==='finished'))return;if(raceTime-lastBanterAt<14)return;const lines=HOST_LINES[kind];if(!lines||!lines.length)return;lastBanterAt=raceTime;hostToast(lines[(banterIdx++)%lines.length],3400);}
+  function showHostCard(){if(!svcOn('hosts'))return;const el=document.getElementById('hostCard');if(!el)return;el.classList.remove('hidden');clearTimeout(hostCardTimer);hostCardTimer=setTimeout(hideHostCard,6800);}
+  function hideHostCard(){const el=document.getElementById('hostCard');if(el)el.classList.add('hidden');clearTimeout(hostCardTimer);}
+  // The menu host strip is part of the host feature: hide it when hosts are off.
+  function refreshHostStrip(){const el=document.querySelector('.hostStrip');if(el)el.style.display=svcOn('hosts')?'':'none';}
+  refreshHostStrip();
+  // Slapstick gag: a driver caught in an explosion is comically scattered into
+  // parts ("blown to bits"). An ambulance scoops the parts and PUTS THE DRIVER
+  // BACK TOGETHER. Immortal universe: pure cartoon, never gore.
+  function spawnBitsDriver(c){if(!optOn('ragdoll'))return;if(drivers.length>=38)return;const pt=physicsTick;drivers.push({x:c.x,y:c.y,vx:Math.sin(pt*.9+c.x*.05)*65,vy:Math.cos(pt*1.1+c.y*.05)*65,dir:(pt*.37+c.x+c.y)%TAU,state:'crawl',bonk:0,spin:(Math.sign(c.x-c.y)||1)*9,taken:false,color:c.color,ragdoll:0,popUp:0,bits:true});spark(c.x,c.y,8);}
+  function applyPaintballVisibility(){const g=document.getElementById('game');if(g)g.classList.toggle('paintball-off',!paintballEnabled());}
+  window.CHINASKAR_PAINTBALL={isEnabled:paintballEnabled,apply:applyPaintballVisibility};
+  // Public control API: validated get/set with real side effects (same path as the menu).
+  window.CHINASKAR_OPTIONS={
+    get:()=>({...window.CHINASKAR_OPTS}),
+    set(key,value){
+      if(!OPT_DEFS.some(d=>d[0]===key))return false;
+      const on=!!value;
+      if(key==='crt'){setCrt(on);return true;}
+      window.CHINASKAR_OPTS[key]=on;saveOpts();applyToggle(key,on);syncOptRow(key);
+      return true;
+    },
+    get definitions(){return OPT_DEFS.map(d=>({key:d[0],label:d[1],desc:d[2]}))}
+  };
+  function debris(x,y,n){for(let i=0;i<n;i++){const kind=i%4===0?'tire':i%3===0?'panel':i%3===1?'glass':'rubber',life=kind==='glass'?.45+Math.random()*.75:1.4+Math.random()*3;const vx=(Math.random()-.5)*175,vy=(Math.random()-.5)*175,vr=(Math.random()-.5)*12,size=kind==='tire'?7:2+Math.random()*5;emitParticle('debris',x,y,vx,vy,life,kind,Math.random()*TAU,vr,size);if(optOn('debris')&&i%2===0&&debrisField.length<MAX_DEBRIS)debrisField.push({x:x+(Math.random()-.5)*22,y:y+(Math.random()-.5)*22,vx:vx*.28,vy:vy*.28,part:kind,size:kind==='tire'?8:3+Math.random()*6,rot:Math.random()*TAU,rotV:vr,age:0,claimed:false});}}
+  function smoke(x,y){emitParticle('smoke',x,y,(Math.random()-.5)*16,-8-Math.random()*12,.55);}
+  function leakFuel(c){
+    if(!optOn('hazards'))return;
+    if(!c||c===tow||c.exploded||c.fuel<=0)return;c.fuel=Math.max(0,c.fuel-.0028);const back=12;
+    fuelPools.push({x:c.x-Math.cos(c.angle)*back+(Math.random()-.5)*5,y:c.y-Math.sin(c.angle)*back+(Math.random()-.5)*5,life:12,fire:c.fire>0});
+    if(fuelPools.length>MAX_FUEL){fuelPools[0]=fuelPools[fuelPools.length-1];fuelPools.pop();}
+  }
+  const EXPLOSION_TIERS={
+    small:{radius:34,force:38,damage:.012,particles:9,life:.22,color:'#ffe36b'},
+    medium:{radius:105,force:185,damage:.11,particles:34,life:.58,color:'#ff8b2d'},
+    huge:{radius:270,force:690,damage:.42,particles:108,life:1.05,color:'#ff4824'}
+  };
+  function burstExplosion(x,y,tier='small'){
+    if(!optOn('hazards'))return;
+    const spec=EXPLOSION_TIERS[tier],rings=tier==='huge'?3:tier==='medium'?2:1;if(shockwaves.length>64)shockwaves.splice(0,shockwaves.length-64);
+    for(let r=0;r<rings;r++)shockwaves.push({x,y,r:2+r*3,life:spec.life*(1-r*.16),max:spec.life*(1-r*.16),tier,color:spec.color,speed:spec.radius/spec.life*(.72+r*.14)});
+    for(let i=0;i<spec.particles;i++){const a=Math.random()*TAU,sp=(20+Math.random()*spec.force)*(tier==='small'?1.7:1),kind=tier==='small'?(i%2?'spark':'debris'):(i%5===0?'smoke':i%4===0?'debris':i%3===0?'spark':'fire');emitParticle(kind,x,y,Math.cos(a)*sp,Math.sin(a)*sp,.18+Math.random()*spec.life*2.4,i%3?'panel':'rubber',a,(Math.random()-.5)*14,2+Math.random()*(tier==='huge'?10:5));}
+    if(tier!=='small')incidentHeat+=tier==='huge'?3.2:.75;
+    // Immortal-universe slapstick: shockwaves fling nearby downed drivers into
+    // ragdoll tumbles; a direct-enough blast comically scatters them "to bits"
+    // (an ambulance later puts them back together). No gore, ever.
+    if(tier!=='small')for(const d of drivers){if(d.taken||d.bits)continue;const dx=d.x-x,dy=d.y-y,dist=Math.hypot(dx,dy)||1;if(dist<spec.radius){const fall=1-dist/spec.radius;d.vx+=dx/dist*fall*spec.force*.55;d.vy+=dy/dist*fall*spec.force*.55;if(svcOn('ragdoll')){d.ragdoll=Math.max(d.ragdoll||0,1+fall);d.spin=(Math.sign(d.vx-d.vy)||1)*(7+fall*9);}if(svcOn('ragdoll')&&dist<spec.radius*.42){d.bits=true;d.vx*=.4;d.vy*=.4;spark(d.x,d.y,7);if(tier==='huge')hostToast('💥 BLOWN TO BITS!');}}}
+  }
+  function explodeCar(c,tier='huge'){
+    if(!optOn('hazards'))return;
+    if(!c||c.exploded)return;c.exploded=true;c.fire=4;c.wrecked=true;c.leak=false;c.vx*=.26;c.vy*=.26;shake=Math.min(28,shake+(tier==='huge'?18:8));burstExplosion(c.x,c.y,tier);impactSound(tier==='huge'?120:72);if(c===player)setTimeout(()=>{if(player&&player.exploded)forceEgress('CAR LOST')},620);
+    // Driver still strapped in? Immortal universe: they get comically scattered
+    // "to bits" and the ambulance reassembles them. (Player ejects separately.)
+    if(!c.isPlayer&&!c.driverOut){c.driverOut=true;if(svcOn('ragdoll'))spawnBitsDriver(c);else spawnDriver(c);}
+    if(tier==='huge')hostSays('wreck');
+    const spec=EXPLOSION_TIERS[tier];
+    for(let oi=-1;oi<cars.length;oi++){const o=oi<0?player:cars[oi];if(!o||o===c||o.removed)continue;const dx=o.x-c.x,dy=o.y-c.y,d=Math.hypot(dx,dy)||1;if(d<spec.radius){const fall=1-d/spec.radius,force=fall*spec.force;o.vx+=dx/d*force;o.vy+=dy/d*force;if(damageFxOn())o.damage=clamp((o.damage||0)+fall*spec.damage,0,1);o.spin=Math.max(o.spin||0,fall*(tier==='huge'?1.35:.5));o.spinDir=Math.sign(dx*o.vy-dy*o.vx)||1;if(tier==='huge'&&d<115&&Math.random()<.14){o.leak=true;o.fire=Math.max(o.fire||0,.05);}if(tier==='huge'&&d<62&&Math.random()<.035)explodeCar(o,'medium');}}
+  }
+  function updateHazards(dt){
+    if(!optOn('hazards'))return;
+    for(let ci=-1;ci<cars.length;ci++){const c=ci<0?player:cars[ci];
+      if(!c||c.removed)continue;
+      if(c.leak&&physicsTick%4===0)leakFuel(c);
+      if(c.leak&&!c.exploded&&c.fuel<.58&&raceTime>24&&racePhase==='green'&&Math.random()<dt*(.002+c.damage*.006))c.fire=Math.max(c.fire,.05);
+      if(c.fire>0&&!c.exploded){c.fire+=dt;smoke(c.x,c.y);if(Math.random()<dt*14)emitParticle('fire',c.x+(Math.random()-.5)*16,c.y+(Math.random()-.5)*12,(Math.random()-.5)*30,-18-Math.random()*34,.3+Math.random()*.45,'',0,0,3+Math.random()*5);if(c.fire>3.4+Math.max(0,c.fuel)*2.6)explodeCar(c);}
+    }
+    for(const f of fuelPools){f.life-=dt;if(f.fire&&Math.random()<dt*9)emitParticle('fire',f.x+(Math.random()-.5)*9,f.y+(Math.random()-.5)*9,(Math.random()-.5)*12,-10-Math.random()*18,.25+Math.random()*.35,'',0,0,2+Math.random()*4);}
+    for(let i=fuelPools.length-1;i>=0;i--)if(fuelPools[i].life<=0){fuelPools[i]=fuelPools[fuelPools.length-1];fuelPools.pop();}
+    for(let i=shockwaves.length-1;i>=0;i--){const s=shockwaves[i];s.life-=dt;s.r+=dt*(s.speed||250);if(s.life<=0){shockwaves[i]=shockwaves[shockwaves.length-1];shockwaves.pop();}}
+  }
+  function surfaceGripAt(x,y,base){let grip=base;if(!optOn('debris'))return grip;for(const d of debrisField){const dx=x-d.x,dy=y-d.y,q=dx*dx+dy*dy;if(q<420){grip*=(d.part==='rubber'||d.part==='tire')?.78:.88;if(q<130&&d.part==='tire'){const a=Math.atan2(dy,dx);d.vx=(d.vx||0)-Math.cos(a)*18;d.vy=(d.vy||0)-Math.sin(a)*18;}}}return clamp(grip,.28,1);}
+  function addSkid(c){if(!optOn('skids'))return;const fx=Math.cos(c.angle),fy=Math.sin(c.angle),rx=-fy,ry=fx,corner=(c.slip||0)<.7;skidmarks.push({x1:c.x-rx*7-fx*7,y1:c.y-ry*7-fy*7,x2:c.x-rx*7-fx*12,y2:c.y-ry*7-fy*12,life:7,thin:corner});skidmarks.push({x1:c.x+rx*7-fx*7,y1:c.y+ry*7-fy*7,x2:c.x+rx*7-fx*12,y2:c.y+ry*7-fy*12,life:7,thin:corner});const cap=mobileMode?qualityConfig().skids:600;if(skidmarks.length>cap)skidmarks.splice(0,skidmarks.length-cap);}
+  function updateCleanup(dt){
+    if(!optOn('debris')){debrisField.length=0;cleanupCrews.length=0;return;}
+    if(optOn('cleanup')&&debrisField.length>18&&cleanupCrews.length<8&&Math.random()<dt*.16){const p=pathAt(-420-Math.random()*260);cleanupCrews.push({x:p.x+p.nx*TRACK_W*.44,y:p.y+p.ny*TRACK_W*.44,angle:p.angle,vx:0,vy:0,target:null,load:0,flash:Math.random()*TAU,homeX:p.x+p.nx*TRACK_W*.46,homeY:p.y+p.ny*TRACK_W*.46});}
+    for(const d of debrisField){d.age+=dt;d.claimed=false;d.x+=(d.vx||0)*dt;d.y+=(d.vy||0)*dt;const drag=d.part==='tire'?Math.exp(-.85*dt):Math.exp(-2.5*dt);d.vx=(d.vx||0)*drag;d.vy=(d.vy||0)*drag;d.rot+=(d.rotV||0)*dt;d.rotV=(d.rotV||0)*Math.exp(-1.1*dt);}
+    if(!optOn('cleanup'))cleanupCrews.length=0;
+    for(const c of cleanupCrews){c.flash+=dt;let target=c.target;if(!target||!debrisField.includes(target)){target=null;let best=Infinity;for(const d of debrisField){const q=(d.x-c.x)**2+(d.y-c.y)**2;if(q<best){best=q;target=d;}}c.target=target;}
+      const tx=target?target.x:c.homeX,ty=target?target.y:c.homeY,dx=tx-c.x,dy=ty-c.y,dist=Math.hypot(dx,dy);if(dist>2){const wanted=Math.atan2(dy,dx),err=Math.atan2(Math.sin(wanted-c.angle),Math.cos(wanted-c.angle));c.angle+=clamp(err,-2.8*dt,2.8*dt);const speed=target?72:46;c.vx+=(Math.cos(c.angle)*speed-c.vx)*dt*3;c.vy+=(Math.sin(c.angle)*speed-c.vy)*dt*3;c.x+=c.vx*dt;c.y+=c.vy*dt;}
+      if(target&&dist<17){const idx=debrisField.indexOf(target);if(idx>=0)debrisField.splice(idx,1);c.target=null;c.load++;spark(c.x,c.y,3);}
+    }
+    for(let i=debrisField.length-1;i>=0;i--)if(debrisField[i].age>=180){debrisField[i]=debrisField[debrisField.length-1];debrisField.pop();}
+  }
+  function drawCleanupCart(c){ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.angle);ctx.fillStyle='#f0c52d';ctx.fillRect(-15,-9,30,18);ctx.fillStyle='#1b2324';ctx.fillRect(-11,-7,13,14);ctx.fillStyle='#75e7dd';ctx.fillRect(4,-6,8,12);ctx.fillStyle='#090b0c';ctx.fillRect(-12,-12,7,4);ctx.fillRect(6,-12,7,4);ctx.fillRect(-12,8,7,4);ctx.fillRect(6,8,7,4);ctx.fillStyle=Math.sin(c.flash*10)>0?'#ff5a42':'#ffe65a';ctx.fillRect(-4,-11,8,3);ctx.strokeStyle='#cfd7d2';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(15,-7);ctx.lineTo(22,-12);ctx.moveTo(15,7);ctx.lineTo(22,12);ctx.stroke();ctx.restore();}
+  function firePlayerPaintball(){
+    if(!player||state!=='racing'||paintAmmo<=0||paintballs.length>=MAX_PAINTBALLS||!paintballEnabled())return;const spec=weaponSpec(),classic=!!BASE_WEAPONS[paintWeapon];if(!classic&&!arsenalOn())return;const now=performance.now(),gap=classic?(paintWeapon==='rapid'?75:paintWeapon==='scatter'?260:150):spec.rate;if(now-lastPaint<gap)return;lastPaint=now;const a=activeEntity(),base=(a.dir??a.angle??0)+cameraYaw,count=classic?(paintWeapon==='scatter'?3:1):spec.count;for(let i=0;i<count&&paintballs.length<MAX_PAINTBALLS;i++){const fan=count>1?(i-(count-1)/2)/(Math.max(1,count-1)/2):0,ang=classic?base+(i-(count-1)/2)*.11+(paintRand()-.5)*.018:base+fan*spec.spread+(paintRand()-.5)*spec.spread*.22,speed=classic?460:spec.speed*(.96+paintRand()*.08);paintballs.push({x:a.x+Math.cos(ang)*16,y:a.y+Math.sin(ang)*16,vx:Math.cos(ang)*speed,vy:Math.sin(ang)*speed,life:classic?1.4:(spec.arc?2.1:1.6),color:classic?paintPalette[(paintAmmo+i)%paintPalette.length]:spec.color,damage:spec.damage,arc:spec.arc||0,fromPlayer:true});}paintAmmo=Math.max(0,paintAmmo-1);muzzleFlash=1;gunKick=1;crossBloom=1;tracer=1;if(ui.shopStatus)ui.shopStatus.textContent=spec.name+' EQUIPPED · '+paintAmmo+' PAINTBALLS';
+  }
+  function updateParticles(dt){
+    if(!optOn('particles'))return;
+    for(let i=particles.length-1;i>=0;i--){const q=particles[i];q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=q.kind==='debris'?.965:.94;q.vy*=q.kind==='debris'?.965:.94;q.rot=(q.rot||0)+(q.vr||0)*dt;q.life-=dt;if(q.life<=0){particles[i]=particles[particles.length-1];particles.pop();particlePool.push(q);}}
+    for(let i=skidmarks.length-1;i>=0;i--){skidmarks[i].life-=dt;if(skidmarks[i].life<=0){skidmarks[i]=skidmarks[skidmarks.length-1];skidmarks.pop();}}
+    if(player&&player.damage>.35&&Math.random()<dt*player.damage*10)smoke(player.x,player.y);for(const c of cars)if(c.wrecked&&!c.removed&&Math.random()<dt*.22){smoke(c.x,c.y);if(Math.random()<.22)debris(c.x,c.y,1);}
+  }
+  function updateCameraRig(dt){
+    const active=activeEntity();if(!active)return;
+    if(cameraMode==='trackside'&&tracksideAuto){tracksideCutTimer-=dt;if(tracksideCutTimer<=0){for(let n=0;n<6;n++){tracksideSpot=(tracksideSpot+1)%6;if(tracksideSpot!==5||optOn('blimp'))break;}tracksideCutTimer=6+(tracksideSpot*1.37)%4;}}
+    const fx=Math.cos(active.angle||active.dir||0),fy=Math.sin(active.angle||active.dir||0),speed=Math.hypot(active.vx||0,active.vy||0);
+    if(cameraMode==='chase'){
+      let vx=speed>3?(active.vx||0)/speed:fx,vy=speed>3?(active.vy||0)/speed:fy,bx=fx*.65+vx*.35,by=fy*.65+vy*.35,bm=Math.hypot(bx,by)||1;bx/=bm;by/=bm;
+      let dx=active.x-fx*34,dy=active.y-fy*34,validT=1;
+      for(let i=1;i<=10;i++){const t=i/10,n=nearestPath(active.x+(dx-active.x)*t,active.y+(dy-active.y)*t);if(n.off>TRACK_W*.49){validT=(i-1)/10;break;}}
+      if(validT<1){const dist=Math.max(14,34*validT-2.4);dx=active.x-fx*dist;dy=active.y-fy*dist;}
+      const a=1-Math.exp(-dt/.16);chaseRig.x+=(dx-chaseRig.x)*a;chaseRig.y+=(dy-chaseRig.y)*a;
+      const lead=40+speed*.35,tx=active.x+bx*lead,ty=active.y+by*lead,wanted=Math.atan2(ty-chaseRig.y,tx-chaseRig.x),ya=1-Math.exp(-dt/.25),err=Math.atan2(Math.sin(wanted-chaseRig.yaw),Math.cos(wanted-chaseRig.yaw));chaseRig.yaw+=err*ya;
+      chaseRig.springV+=(-60*chaseRig.spring-8*chaseRig.springV)*dt;chaseRig.springV*=Math.exp(-dt*1.4);chaseRig.spring=clamp(chaseRig.spring+chaseRig.springV*dt,-1.4,1.4);
+    }
+    if(cameraMode==='helic
