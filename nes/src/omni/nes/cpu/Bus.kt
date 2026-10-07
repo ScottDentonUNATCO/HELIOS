@@ -68,6 +68,19 @@ class StubBus(
     var oamDmaCount = 0
         private set
 
+    /**
+     * Scripted controller-1 state for headless playtesting, NES bit order:
+     * bit7=A, bit6=B, bit5=Select, bit4=Start, bit3=Up, bit2=Down,
+     * bit1=Left, bit0=Right. A write to $4016 with bit 0 set latches it;
+     * reads of $4016 shift it out MSB-first (A first, Right last, 1s after
+     * the 8th read), exactly like the 2A03's controller port, so the
+     * scaffold's read_pad accumulates padstate as bit7=A ... bit0=Right.
+     * Default 0 = no buttons pressed, identical to the old stub.
+     */
+    var pad1: Int = 0
+    private var padShift = 0
+    private var padReads = 0
+
     private val apu = IntArray(0x18)
     private var currentPc = 0
     private var afterTick = false
@@ -94,7 +107,15 @@ class StubBus(
         return when {
             a < 0x2000 -> ram[a and 0x07FF].toInt() and 0xFF
             a < 0x4000 -> ppu.readReg(a and 0x7)
-            a < 0x4018 -> 0 // APU/IO stub reads
+            a == 0x4016 -> {
+                // Controller 1: latched pad1 shifted out MSB-first so the
+                // first read is A and the eighth is Right (real hardware
+                // order); 1s after the 8th read, like hardware.
+                val b = if (padReads < 8) (padShift ushr (7 - padReads)) and 1 else 1
+                padReads++
+                b
+            }
+            a < 0x4018 -> 0 // APU/IO stub reads ($4017 included)
             a < 0x4020 -> 0 // $4018-$401F stub reads
             a < 0x6000 -> {
                 faults.add("UNMAPPED_READ addr=${hex4(a)}")
@@ -117,6 +138,13 @@ class StubBus(
             a == 0x4014 -> {
                 oamDmaCount++
                 ppu.oamDma(v) { src -> read(src) }
+            }
+            a == 0x4016 -> {
+                apu[6] = v // strobe write, still recorded
+                if (v and 1 != 0) {
+                    padShift = pad1 and 0xFF
+                    padReads = 0
+                }
             }
             a < 0x4018 -> apu[a - 0x4000] = v // APU/IO stub: recorded, never faults
             a < 0x4020 -> { /* $4018-$401F stub */ }
