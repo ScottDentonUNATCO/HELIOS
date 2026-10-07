@@ -5,6 +5,9 @@ package omni.nes.gen
  * Produces real, validator-GREEN NROM-128 games in the assembler's syntax.
  *
  * Dispatch is keyword-based over [GameSpec.mechanics] (case-insensitive):
+ * "dodge"/"dodger"/"meteor"/"collect" -> STAR DODGER (full arcade game:
+ * player ship, falling meteors, collectible stars, score, 3 lives, game
+ * over, restart — see [DodgerGame]),
  * "score" -> score-counter game, "bounce"/"ball" -> bouncing-ball game,
  * anything with "move"/"dpad"/"sprite" (or nothing recognized) -> D-pad
  * sprite-movement game. Unknown specs can never crash it or produce invalid
@@ -13,15 +16,36 @@ package omni.nes.gen
  */
 class MockGenerator : Generator, ChrProvider {
 
-    override fun chr(): ByteArray = ChrData.default()
+    /**
+     * CHR of the most recently generated game. The dodger template needs
+     * its own tiles (ship, meteor, star, letters); everything else uses the
+     * shared default set. Set on every [generate] call so [chr] always
+     * matches the last assembly produced.
+     */
+    private var lastChr: ByteArray = ChrData.default()
+
+    override fun chr(): ByteArray = lastChr
 
     override fun generate(spec: GameSpec): String {
         val mechs = spec.mechanics.joinToString(" ").lowercase()
         val title = sanitizeTitle(spec.title)
         return when {
-            "score" in mechs -> scoreGame(title, spec)
-            "bounce" in mechs || "ball" in mechs -> bounceGame(title, spec)
-            else -> dpadGame(title, spec)
+            "dodge" in mechs || "dodger" in mechs || "meteor" in mechs || "collect" in mechs -> {
+                lastChr = DodgerChr.data()
+                DodgerGenerator().generate(spec)
+            }
+            "score" in mechs -> {
+                lastChr = ChrData.default()
+                scoreGame(title, spec)
+            }
+            "bounce" in mechs || "ball" in mechs -> {
+                lastChr = ChrData.default()
+                bounceGame(title, spec)
+            }
+            else -> {
+                lastChr = ChrData.default()
+                dpadGame(title, spec)
+            }
         }
     }
 
