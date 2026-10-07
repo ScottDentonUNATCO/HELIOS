@@ -26,7 +26,7 @@ DEX_DIR="$AB/dex-out"
 KEYSTORE="${KEYSTORE:-$AB/debug.keystore}"
 KEYSTORE_PASS="${KEYSTORE_PASS:-android}"
 KEY_PASS="${KEY_PASS:-android}"
-OUT_APK="$AB/helios-v11-debug.apk"
+OUT_APK="$AB/helios-v18-debug.apk"
 
 [ -f "$BASE_APK" ] || { echo "FATAL: missing $BASE_APK (run apk-build/relink.sh)"; exit 1; }
 
@@ -45,9 +45,11 @@ if [ -z "${KEY_ALIAS:-}" ]; then
 fi
 echo "== signing with keystore alias: $KEY_ALIAS"
 
-echo "== step 1: insert dex into base APK"
-rm -f "$AB/omni-with-dex.apk"
+echo "== step 0: package native libs (.so) if any (see apk-build/package_native.sh)"
 cp "$BASE_APK" "$AB/omni-with-dex.apk"
+"$AB/package_native.sh" "$AB/omni-with-dex.apk"
+
+echo "== step 1: insert dex into base APK"
 for dex in "$DEX_DIR"/classes*.dex; do
   [ -f "$dex" ] || { echo "FATAL: no dex in $DEX_DIR (run apk-build/dex.sh)"; exit 1; }
   zip -q -j "$AB/omni-with-dex.apk" "$dex"
