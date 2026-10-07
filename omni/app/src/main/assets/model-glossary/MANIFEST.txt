@@ -1,0 +1,19 @@
+HELIOS OFFLINE MODEL GLOSSARY - MANIFEST
+============================================
+version: 1
+data file: glossary-v1.json
+updated: 2026-10-01
+entries: 19
+schema: helios.model-glossary/v1
+
+Loading priority (update WITHOUT an APK rebuild):
+1. files-dir override: <app-files>/model-glossary/glossary-v1.json
+   (a newer glossary dropped here wins - FetchLink or a socket can fetch it)
+2. assets fallback: assets/model-glossary/glossary-v1.json (this file)
+
+Honesty contract:
+- Every benchmark was read from a real published source on 2026-10-01.
+- verified:true = the score was seen in the cited source page.
+- Empty benchmark lists = no reliable public number was found. Never invent one.
+- RAM figures are MEASURED (real on-device data) or estimate (from parameter count, labeled as such).
+- Code license and weights license are separate fields on purpose (per-socket licensing policy).
