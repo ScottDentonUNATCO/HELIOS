@@ -46,6 +46,34 @@ fun interface Generator {
 }
 
 /**
+ * Builds a [GameSpec] from a free-text brief — what the user typed into the
+ * game-maker UI. The title is the brief's first 80 characters; mechanics are
+ * keyword-scanned from the brief so the template generator can honor what
+ * was actually asked for (a brief mentioning meteors must not silently
+ * become the D-pad demo).
+ *
+ * Lives in the shared module (no Android dependencies) so the mapping is
+ * unit-testable; the app's pipeline delegates to it.
+ */
+fun briefToSpec(brief: String): GameSpec {
+    val clean = brief.replace(Regex("\\s+"), " ").trim()
+    val b = clean.lowercase()
+    fun any(vararg words: String) = words.any { it in b }
+    val mechanics = buildList {
+        if (any("dodge", "dodger", "meteor", "avoid", "collect", "star", "pick up"))
+            addAll(listOf("dodge", "collect"))
+        if (any("score", "points", "high score")) add("score")
+        if (any("bounce", "bouncing", "ball", "pong")) add("bounce")
+        if (any("move", "dpad", "d-pad", "control", "drive", "sprite", "ship", "fly"))
+            add("move")
+    }
+    return GameSpec(
+        title = clean.take(80).ifEmpty { "UNTITLED" },
+        mechanics = mechanics,
+    )
+}
+
+/**
  * A generator that can try again with failure context. The loop's
  * [RepromptRepair] calls this instead of applying rule-based patches.
  */
