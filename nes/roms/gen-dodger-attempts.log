@@ -1,0 +1,18 @@
+# OMNI NES generation attempt log
+spec_title: Star Dodger: dodge the meteors, collect the stars, 3 lives
+spec_genre: 
+spec_mechanics: dodge,collect
+generator: omni.nes.gen.MockGenerator
+repairer: RuleBasedRepair
+config: maxAttempts=5 enableRepair=true validator=ValidatorConfig(strictIllegalOpcodes=true, requireNmi=true, checkSpriteOverflow=true, checkPaletteTiming=true, bootCycleBudget=300000, nmiFrameCycles=29780)
+---
+attempt: 1
+asm_sha256: 77d472052ec669ce8e7dd4c747b915b5e6518598eeb0d21eec5c06459d80b7fc
+assembled: true
+build_error: none
+passed: true
+fired_rules: none
+repair_action: initial generation
+---
+result: SUCCESS after 1 attempt(s)
+note: none
