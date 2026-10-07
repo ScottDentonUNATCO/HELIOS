@@ -35,6 +35,14 @@ FLATS="$AB/flats"
 rm -rf "$FLATS"; mkdir -p "$FLATS"
 
 echo "== aapt2 compile (app res + AAR res dirs)"
+# Sync canonical app resources (omni/app/src/main/res, e.g. res/xml/file_paths.xml
+# for the FileProvider) into the build res root before compiling.
+APP_RES_SRC="$ROOT/omni/app/src/main/res"
+if [ -d "$APP_RES_SRC" ]; then
+  mkdir -p "$AB/res"
+  cp -r "$APP_RES_SRC/." "$AB/res/"
+  echo "  synced $APP_RES_SRC -> $AB/res"
+fi
 count=0
 i=0
 for resdir in "$AB/res" "$AB"/extract/*/res; do
@@ -62,8 +70,9 @@ aapt2 link -o "$AB/omni-unsigned.apk" \
   -I "$AJAR" \
   --manifest "$MANIFEST" \
   --min-sdk-version 28 --target-sdk-version 36 \
-  --version-code 10 --version-name "0.8.2-helios" \
+  --version-code 17 --version-name "0.13.0-helios" \
   -A "$ASSETS" \
+  --no-compress-regex '\.gguf$' \
   --java "$AB/gen-r" \
   "$FLATS"/*/*.flat
 echo "  linked -> $AB/omni-unsigned.apk ($(stat -c%s "$AB/omni-unsigned.apk") bytes)"
