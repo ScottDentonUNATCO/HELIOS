@@ -4,7 +4,39 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- Voice notes: requested at runtime, only when the user taps the mic.
+         The sheet shows a plain-words rationale before the system dialog and
+         explains itself on denial instead of crashing. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Lets the system installer handle APKs the off-device builder drops
+         into the app's updates folder ("tap to install" on Build Status). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Gallery attachments + "find me that photo of X" search. The app reads
+         media ONLY while the gallery picker or gallery search screen is open
+         (stated in-app); there is no background media access anywhere. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
+    <!-- WORKER-D (v18) PERMISSION AUDIT — the full runtime list is exactly:
+         RECORD_AUDIO, READ_MEDIA_IMAGES/VIDEO (READ_EXTERNAL_STORAGE ≤32),
+         REQUEST_INSTALL_PACKAGES, and the OS screen-capture consent dialog
+         (no manifest entry). No camera, no location, no POST_NOTIFICATIONS —
+         nothing unused to trim. Policy: every one of these is asked ONLY at
+         its moment of need, in chat, in one plain sentence (see
+         PermissionMoment), and FIRST OPEN ASKS FOR NOTHING. -->
+
+    <!-- WORKER-F (v17) ICON CANDIDATE — PENDING SCOTT'S EYEBALL.
+         Swap the android:icon line below to trial the sun-compass
+         launcher icon (mipmap-anydpi-v26/ic_launcher_suncompass.xml).
+         Worker E: this is the only manifest-adjacent change in this
+         branch; the live icon is untouched until the swap is approved.
+         (Kept OUTSIDE the <application> tag: XML comments are not
+         allowed inside a tag's attribute list.)
+    android:icon="@mipmap/ic_launcher_suncompass"
+    -->
     <application
         android:label="Helios"
         android:icon="@mipmap/ic_launcher"
@@ -44,6 +76,19 @@
             android:name="com.omni.app.gamemaker.easteregg.ChinaskarV1Activity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Serves builder-supplied APKs from the app-private updates folder
+             to the system installer. Only files-path "updates/" is exposed —
+             nothing else on the device is reachable through this provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.omni.app.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 
